@@ -1,0 +1,6 @@
+{
+  "name": "possess-app",
+  "dependencies": {
+    "stackedit-js": "latest"
+  }
+}
