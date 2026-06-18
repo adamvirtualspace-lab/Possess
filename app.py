@@ -1,20 +1,21 @@
 """PossessApp - Markdown Note Taking Backend"""
 
 import os
-import json
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Validate notes dir on startup"""
-    if not os.path.exists(NOTES_DIR):
-        os.makedirs(NOTES_DIR)
-        print(f"[PossessApp] Created default notes directory: {NOTES_DIR}")
+    root_dir = Path(__file__).resolve().parent
+    if not os.path.exists(root_dir / "notes"):
+        os.makedirs(root_dir / "notes")
+        print(f"[PossessApp] Created default notes directory: {root_dir / 'notes'}")
     yield
 
 
@@ -28,46 +29,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Base directory (all .md files live here)
-NOTES_DIR = os.path.abspath("notes")
-
+# ── Routes (must come BEFORE static mounts — mounts are catchall) ──
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    """Serve the main UI"""
     return FileResponse("index.html", media_type="text/html")
 
 
 @app.get("/api/folders")
 def list_folders(root: str | None = None):
-    """Recursively discover .md files and folder structure for sidebar tree."""
-    base = root or NOTES_DIR
+    root_dir = Path(__file__).resolve().parent
+    base = root or str((root_dir / "notes").resolve())
 
     if not os.path.isdir(base):
         raise HTTPException(404, f"Directory not found: {base}")
 
-    folder_dict = {}  # { "subfolder_name": [(".md", filename), ...] }
-
+    folder_dict = {}
     for dirpath, _dirnames, filenames in os.walk(base):
         rel = os.path.relpath(dirpath, base) or "."
         md_files = sorted(f for f in filenames if f.endswith(".md"))
         if md_files:
-            folder_dict[rel] = list()
+            folder_dict[rel] = []
             for fname in md_files:
                 full_path = os.path.join(dirpath, fname)
                 folder_dict[rel].append((fname, full_path))
 
-    return {
-        "base": base,
-        "folders": folder_dict,
-    }
+    return {"base": base, "folders": folder_dict}
 
 
 @app.get("/api/file/{filepath:path}")
 def get_file(filepath: str):
-    """Get content of a specific .md file."""
-    full = os.path.normpath(os.path.join(NOTES_DIR, filepath))
-    if not full.startswith(NOTES_DIR):
+    root_dir = Path(__file__).resolve().parent
+    notes_dir = str((root_dir / "notes").resolve())
+    full = os.path.normpath(os.path.join(notes_dir, filepath))
+
+    # Security: prevent path traversals like "../../../etc/passwd"
+    if not full.startswith(notes_dir + os.sep) and full != notes_dir:
         raise HTTPException(403, "Access denied")
 
     if not os.path.isfile(full):
@@ -75,29 +72,31 @@ def get_file(filepath: str):
 
     content = Path(full).read_text(encoding="utf-8")
     mtime = Path(full).stat().st_mtime
-
     return {"filename": filepath, "content": content, "mtime": mtime}
 
 
 @app.post("/api/file/{filepath:path}")
 def save_file(filepath: str, body: dict):
-    """Save/overwrite content to a .md file."""
-    full = os.path.normpath(os.path.join(NOTES_DIR, filepath))
-    if not full.startswith(NOTES_DIR):
+    root_dir = Path(__file__).resolve().parent
+    notes_dir = str((root_dir / "notes").resolve())
+    full = os.path.normpath(os.path.join(notes_dir, filepath))
+
+    if not full.startswith(notes_dir + os.sep) and full != notes_dir:
         raise HTTPException(403, "Access denied")
 
     content = body.get("content", "")
     Path(full).write_text(content, encoding="utf-8")
     mtime = Path(full).stat().st_mtime
-
     return {"saved": True, "mtime": mtime}
 
 
 @app.get("/api/status")
 def get_status(filepath: str, mtime: float = 0):
-    """Compare server mtime with client mtime for sync check."""
-    full = os.path.normpath(os.path.join(NOTES_DIR, filepath))
-    if not full.startswith(NOTES_DIR):
+    root_dir = Path(__file__).resolve().parent
+    notes_dir = str((root_dir / "notes").resolve())
+    full = os.path.normpath(os.path.join(notes_dir, filepath))
+
+    if not full.startswith(notes_dir + os.sep) and full != notes_dir:
         raise HTTPException(403, "Access denied")
 
     if not os.path.isfile(full):
@@ -105,13 +104,20 @@ def get_status(filepath: str, mtime: float = 0):
 
     server_mtime = Path(full).stat().st_mtime
     changed = abs(server_mtime - mtime) > 0.01
-
     return {"exists": True, "changed": changed, "mtime": server_mtime}
+
+
+# ── Static file mounts (catchall — must come after routes) ──
+
+ROOT_DIR = Path(__file__).resolve().parent
+app.mount("/css", StaticFiles(directory=str(ROOT_DIR / "css")), name="css")
+app.mount("/js", StaticFiles(directory=str(ROOT_DIR / "js")), name="js")
+app.mount("/vendor", StaticFiles(directory=str(ROOT_DIR / "vendor")), name="vendor")
 
 
 if __name__ == "__main__":
     import uvicorn
     print(f"[PossessApp] Running on http://localhost:8000")
-    print(f"[PossessApp] Notes root directory: {NOTES_DIR}")
-    print("[Hint] Create a 'notes/' folder and add .md files to explore!")
+    print(f"[PossessApp] Notes root directory: {ROOT_DIR / 'notes'}")
+    print("[Hint] Create some .md files in 'notes/' to get started!")
     uvicorn.run(app, host="0.0.0.0", port=8000)
