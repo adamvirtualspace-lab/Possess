@@ -2,10 +2,41 @@
 
 ## Tech Stack
 - **Backend:** FastAPI + uvicorn (Python)
-- **Frontend:** HTML/CSS/JS + stackedit.js (served locally, NO CDN)
+- **Frontend:** HTML/CSS/JS modular components
+  - Editor: SimpleMDE (local vendor, NO CDN)
+  - Preview: marked.js (from local `/vendor/marked.min.js`)
 - **File Access:** FastAPI serves as bridge to read/write local .md files
-- **Setup:** npm install + build stackedit → serve via FastAPI
-- **No Docker** — just `python app.py`
+- **No Docker** — just `python3 app.py`
+
+---
+
+## Modular File Structure
+
+```
+possess/
+├── app.py                      # FastAPI server (updated to serve static)
+├── index.html                  # Root entry point
+├── requirements.txt
+├── .gitignore
+│
+├── vendor/                     # Pre-built 3rd-party libs
+│   ├── simplemde.min.js
+│   ├── simplemde.min.css
+│   └── marked.min.js
+│
+├── css/                        # Component styles
+│   ├── main.css                # Global vars, reset
+│   ├── sidebar.css             # File tree styles
+│   ├── editor.css              # SimpleMDE dark overrides
+│   └── preview.css             # Markdown preview rendering
+│
+└── js/                         # Component scripts
+    ├── api.js                  # Fetch endpoints
+    ├── sidebar.js              # Sidebar/file tree logic
+    ├── editor.js               # SimpleMDE init/control
+    ├── preview.js              # Marked rendering
+    └── app.js                  # Orchestration (sync, events)
+```
 
 ---
 
@@ -38,10 +69,20 @@
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `app.py` | FastAPI server with routes: serve index.html, list .md files recursively, get file content, save file edits | TODO |
-| `index.html` | Main app page with embedded CSS + JS for sidebar, editor, preview, marked.js rendering | TODO |
-| `requirements.txt` | Python deps: fastapi, uvicorn | TODO |
-| `.gitignore` | Ignore __pycache__, .venv, *.pyc | TODO |
+| `app.py` | FastAPI server with routes: serve index.html, list .md files recursively, get file content, save file edits | ✅ DONE |
+| `index.html` | Main app page with embedded CSS + JS for sidebar, editor, preview, marked.js rendering | ⚠️ Partial (CSS inline) |
+| `requirements.txt` | Python deps: fastapi, uvicorn | ✅ DONE |
+| `.gitignore` | Ignore __pycache__, .venv, *.pyc | ✅ DONE |
+| `vendor/marked.min.js` | Markdown rendering library | ❌ TODO |
+| `css/main.css` | Global vars, reset | ✅ DONE |
+| `css/sidebar.css` | File tree styles | ✅ DONE |
+| `css/editor.css` | SimpleMDE dark overrides | ✅ DONE |
+| `css/preview.css` | Markdown preview rendering | ❌ TODO |
+| `js/api.js` | Fetch endpoints | ❌ TODO |
+| `js/sidebar.js` | Sidebar/file tree logic | ❌ TODO |
+| `js/editor.js` | SimpleMDE init/control | ❌ TODO |
+| `js/preview.js` | Marked rendering | ❌ TODO |
+| `js/app.js` | Orchestration (sync, events) | ❌ TODO |
 
 ---
 

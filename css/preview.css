@@ -1,0 +1,217 @@
+/* ── Preview Styles (Markdown rendering) ── */
+
+.markdown-preview {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+/* ── Headings ── */
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4,
+.markdown-preview h5 {
+  color: var(--text-main);
+  font-weight: 600;
+  margin-top: 2em;
+  margin-bottom: 0.7em;
+}
+
+.markdown-preview h1 {
+  font-size: 2rem;
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.markdown-preview h2 {
+  font-size: 1.5rem;
+  padding-bottom: 0.3em;
+  border-bottom: 1px dotted var(--border-color);
+}
+
+.markdown-preview h3 {
+  font-size: 1.25rem;
+  color: #cfe0f2;
+}
+
+.markdown-preview h4 {
+  font-size: 1.1rem;
+  color: #b8cce0;
+}
+
+/* ── Paragraphs & text ── */
+
+.markdown-preview p {
+  margin-bottom: 1em;
+  color: var(--text-main);
+}
+
+.markdown-preview strong {
+  font-weight: 600;
+  color: #eaf2fa;
+}
+
+.markdown-preview em {
+  font-style: italic;
+}
+
+/* ── Links ── */
+
+.markdown-preview a {
+  color: #5aa9e0;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(54, 137, 207, 0.3);
+  transition: all 0.15s;
+}
+
+.markdown-preview a:hover {
+  color: #3689cf;
+  border-bottom-color: var(--accent);
+}
+
+/* ── Lists ── */
+
+.markdown-preview ul,
+.markdown-preview ol {
+  margin-bottom: 1em;
+  padding-left: 1.8em;
+}
+
+.markdown-preview li {
+  margin-bottom: 0.4em;
+  color: var(--text-main);
+}
+
+/* Task lists & checkboxes */
+.markdown-preview ul.contains-task-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.markdown-preview input[type="checkbox"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border-color);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  margin-right: 8px;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.markdown-preview input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  position: relative;
+}
+
+.markdown-preview input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 7px;
+  border-right: 1.5px solid white;
+  border-bottom: 1.5px solid white;
+  transform: rotate(45deg);
+}
+
+/* ── Blockquotes ── */
+
+.markdown-preview blockquote {
+  margin: 1em 0;
+  padding: 8px 16px;
+  border-left: 3px solid var(--accent);
+  background: rgba(54, 137, 207, 0.06);
+  color: var(--text-muted);
+  border-radius: 0 6px 6px 0;
+}
+
+.markdown-preview blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Code ── */
+
+.markdown-preview code {
+  background: rgba(54, 137, 207, 0.12);
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: #9ccbe8;
+  font-size: 0.88em;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+.markdown-preview pre {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 1.2em;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.markdown-preview pre code {
+  background: none;
+  padding: 0;
+  color: #c8d6e5;
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+/* ── Tables ── */
+
+.markdown-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.2em;
+  font-size: 0.9rem;
+}
+
+.markdown-preview th {
+  background: rgba(54, 137, 207, 0.1);
+  color: var(--accent-hover);
+  padding: 10px 14px;
+  text-align: left;
+  border: 1px solid var(--border-color);
+  font-weight: 600;
+}
+
+.markdown-preview td {
+  padding: 9px 14px;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+}
+
+.markdown-preview tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+/* ── Horizontal rule ── */
+
+.markdown-preview hr {
+  border: none;
+  height: 1px;
+  background: var(--border-color);
+  margin: 2em auto;
+}
+
+/* ── Images ── */
+
+.markdown-preview img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Footnotes (optional) ── */
+
+.markdown-preview sup {
+  font-size: 0.75em;
+  vertical-align: super;
+  color: var(--accent);
+}

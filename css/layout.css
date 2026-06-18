@@ -1,0 +1,85 @@
+/* ── Layout Styles (Main content area) ── */
+
+/* App root layout */
+#app {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+/* ════════════════ MAIN EDITOR AREA ════════════════ */
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Top bar ── */
+
+.top-bar {
+  height: 48px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-root);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+}
+
+.top-bar span {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ── Toggle buttons ── */
+
+.btn-group {
+  display: flex;
+  gap: 6px;
+}
+
+.btn {
+  padding: 7px 14px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-main);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: all 0.18s;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+/* ── Viewport (editor + preview panels) ── */
+
+.viewport {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+#editor-container,
+#preview-panel {
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+  padding: 24px;
+}
+
+/* Editor container wrapper for SimpleMDE */
+#editor-container .editor-wrapper,
+#editor-container .CodeMirror,
+#editor-container .CodeMirror-scroll {
+  height: 100% !important;
+}

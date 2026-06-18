@@ -1,0 +1,36 @@
+/* ── Main Global Styles (Dark Theme) ── */
+
+:root {
+  /* Colors */
+  --bg-root: #050a11;
+  --bg-sidebar: #0b1220;
+  --border-color: #1e2a3e;
+  --text-main: #d9e4f0;
+  --text-muted: #7a8ba7;
+
+  /* Accent */
+  --accent: #3689cf;
+  --accent-hover: #5aa9e0;
+}
+
+/* Base Reset */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  background: var(--bg-root);
+  color: var(--text-main);
+  overflow: hidden;
+}
+
+/* Scrollbar Styling (Dark) */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
+
+/* Global Transitions */
+html, body, .sidebar > *, .folder-header, .file-item, .btn, #app > * {
+  transition-duration: 0.18s;
+}

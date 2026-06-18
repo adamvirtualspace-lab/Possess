@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PossessApp</title>
+
+  <!-- SimpleMDE CSS (local vendor) -->
+  <link rel="stylesheet" href="/vendor/simplemde.min.css" />
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="/css/main.css" />
+  <link rel="stylesheet" href="/css/sidebar.css" />
+  <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/editor.css" />
+  <link rel="stylesheet" href="/css/preview.css" />
+
+  <!-- JS Libraries (loaded before our scripts) -->
+  <script src="/vendor/marked.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- ── SIDEBAR ── -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-icon"><span>P</span></div>
+        <span class="sidebar-title">PossessApp</span>
+      </div>
+      <nav id="file-tree"></nav>
+    </aside>
+
+    <!-- ── MAIN CONTENT ── -->
+    <section class="main-content">
+      <div class="top-bar">
+        <span id="current-file-name">No file selected</span>
+        <div class="btn-group">
+          <button class="btn" id="btn-edit" title="Edit Mode">Edit</button>
+          <button class="btn active" id="btn-preview" title="Preview Mode">Preview</button>
+        </div>
+      </div>
+
+      <div class="viewport">
+        <div id="editor-container"></div>
+        <div id="preview-panel" class="markdown-preview"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Application Scripts -->
+  <script src="/js/api.js"></script>
+  <script src="/js/sidebar.js"></script>
+  <script src="/js/editor.js"></script>
+  <script src="/js/preview.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
