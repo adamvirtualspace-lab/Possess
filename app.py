@@ -63,7 +63,7 @@ def list_folders(root: str | None = None):
     }
 
 
-@app.get("/api/file/{filepath}")
+@app.get("/api/file/{filepath:path}")
 def get_file(filepath: str):
     """Get content of a specific .md file."""
     full = os.path.normpath(os.path.join(NOTES_DIR, filepath))
@@ -79,7 +79,7 @@ def get_file(filepath: str):
     return {"filename": filepath, "content": content, "mtime": mtime}
 
 
-@app.post("/api/file/{filepath}")
+@app.post("/api/file/{filepath:path}")
 def save_file(filepath: str, body: dict):
     """Save/overwrite content to a .md file."""
     full = os.path.normpath(os.path.join(NOTES_DIR, filepath))
@@ -91,6 +91,22 @@ def save_file(filepath: str, body: dict):
     mtime = Path(full).stat().st_mtime
 
     return {"saved": True, "mtime": mtime}
+
+
+@app.get("/api/status")
+def get_status(filepath: str, mtime: float = 0):
+    """Compare server mtime with client mtime for sync check."""
+    full = os.path.normpath(os.path.join(NOTES_DIR, filepath))
+    if not full.startswith(NOTES_DIR):
+        raise HTTPException(403, "Access denied")
+
+    if not os.path.isfile(full):
+        return {"exists": False, "changed": False}
+
+    server_mtime = Path(full).stat().st_mtime
+    changed = abs(server_mtime - mtime) > 0.01
+
+    return {"exists": True, "changed": changed, "mtime": server_mtime}
 
 
 if __name__ == "__main__":
