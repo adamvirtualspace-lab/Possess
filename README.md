@@ -1,4 +1,6 @@
-cd [to the directory you cloned this to]
-pip install -r requirements.txt
-python app.py
-# Open http://localhost:8000
+# how to setup :
+
+## cd [to the directory you cloned this to]
+## pip install -r requirements.txt
+## python app.py
+## Open http://localhost:8000
