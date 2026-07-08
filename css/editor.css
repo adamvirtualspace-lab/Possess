@@ -10,7 +10,6 @@
 
 /* Main textarea override — the SimpleMDE editing surface */
 .CodeMirror {
-  height: 100% !important;
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
   font-size: 0.95rem;
   line-height: 1.7;
@@ -88,30 +87,30 @@
 /* ════════════════ TOOLBAR ════════════════ */
 
 .SimpleMDE-Statusdiv,
-.toolbar {
+.editor-toolbar {
   background: rgba(0, 0, 0, 0.2) !important;
   border-bottom: 1px solid var(--border-color) !important;
 }
 
 /* Toolbar buttons */
-.toolbar svg,
-.toolbar i {
+.editor-toolbar svg,
+.editor-toolbar i {
   color: var(--text-muted);
   transition: color 0.15s, background 0.15s;
 }
 
-.toolbar button {
+.editor-toolbar button {
   padding: 8px 6px;
   border-radius: 5px;
   transition: all 0.15s;
 }
 
-.toolbar button:hover {
+.editor-toolbar button:hover {
   background: rgba(255, 255, 255, 0.08) !important;
 }
 
-.toolbar button.active,
-.toolbar button:active {
+.editor-toolbar button.active,
+.editor-toolbar button:active {
   background: rgba(54, 137, 207, 0.2) !important;
   color: #5aa9e0 !important;
 }

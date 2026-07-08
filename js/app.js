@@ -10,6 +10,7 @@ const App = {
     Editor.onSave = (content) => this.saveCurrentFile(content);
     Preview.init();
     Editor.init();
+    this.setViewMode('edit');
 
     await Sidebar.init();
 
@@ -35,7 +36,7 @@ const App = {
 
     if (mode === 'preview') {
       Preview.show();
-      Preview.render(Editor.getContent());
+      await Preview.render(Editor.getContent());
     } else {
       Preview.hide();
     }
@@ -51,7 +52,7 @@ const App = {
       document.getElementById('current-file-name').textContent = filepath;
 
       if (this.state.viewMode === 'preview') {
-        Preview.render(data.content);
+        await Preview.render(data.content);
       }
     } catch (err) {
       console.error('Failed to load file:', err);
@@ -67,7 +68,7 @@ const App = {
       Editor.clearDirty();
 
       if (this.state.viewMode === 'preview') {
-        Preview.render(content);
+        await Preview.render(content);
       }
     } catch (err) {
       console.error('Failed to save file:', err);
@@ -86,7 +87,7 @@ const App = {
           Editor.setContent(data.content);
 
           if (this.state.viewMode === 'preview') {
-            Preview.render(data.content);
+            await Preview.render(data.content);
           }
         }
       } catch (err) {

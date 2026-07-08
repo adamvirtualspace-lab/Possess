@@ -17,6 +17,7 @@
 
   <!-- JS Libraries (loaded before our scripts) -->
   <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/simplemde.min.js"></script>
 </head>
 <body>
   <div id="app">
@@ -34,13 +35,13 @@
       <div class="top-bar">
         <span id="current-file-name">No file selected</span>
         <div class="btn-group">
-          <button class="btn" id="btn-edit" title="Edit Mode">Edit</button>
-          <button class="btn active" id="btn-preview" title="Preview Mode">Preview</button>
+          <button class="btn active" id="btn-edit" title="Edit Mode">Edit</button>
+          <button class="btn" id="btn-preview" title="Preview Mode">Preview</button>
         </div>
       </div>
 
       <div class="viewport">
-        <div id="editor-container"></div>
+        <textarea id="editor-container"></textarea>
         <div id="preview-panel" class="markdown-preview"></div>
       </div>
     </section>

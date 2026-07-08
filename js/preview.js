@@ -3,19 +3,23 @@ const Preview = {
 
   init() {
     this.panel = document.getElementById('preview-panel');
+    this.panel.style.display = 'none';
   },
 
-  render(markdown) {
-    this.panel.innerHTML = marked.parse(markdown || '');
+  async render(markdown) {
+    const result = await marked.parse(markdown || '');
+    this.panel.innerHTML = result;
   },
 
   show() {
-    this.panel.style.display = 'block';
-    document.getElementById('editor-container').style.display = 'none';
+    this.panel.style.display = '';
+    var cm = Editor.instance.codemirror.getWrapperElement();
+    if (cm) cm.style.display = 'none';
   },
 
   hide() {
     this.panel.style.display = 'none';
-    document.getElementById('editor-container').style.display = '';
+    var cm = Editor.instance.codemirror.getWrapperElement();
+    if (cm) cm.style.display = '';
   },
 };
