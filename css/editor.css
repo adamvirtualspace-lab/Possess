@@ -16,6 +16,7 @@
   color: var(--text-main) !important;
   background: transparent !important;
   padding: 4px 0;
+  border: none !important;
 }
 
 /* Gutter — line numbers, fold indicators */
@@ -132,4 +133,56 @@
   color: var(--text-muted);
   font-size: 0.75rem;
   line-height: 2.1em;
+}
+
+/* ════════════════ BUILT-IN PREVIEW (DARK OVERRIDES) ════════════════ */
+
+.editor-preview,
+.editor-preview-side {
+  background: var(--bg-root) !important;
+  color: var(--text-main);
+}
+
+.editor-preview pre,
+.editor-preview-side pre {
+  background: rgba(0, 0, 0, 0.3) !important;
+  color: #c8d6e5;
+}
+
+.editor-preview table td,
+.editor-preview table th,
+.editor-preview-side table td,
+.editor-preview-side table th {
+  border-color: var(--border-color) !important;
+}
+
+/* Fullscreen editor */
+.CodeMirror-fullscreen {
+  background: var(--bg-root) !important;
+}
+
+.editor-toolbar.fullscreen {
+  background: var(--bg-sidebar) !important;
+}
+
+/* Toolbar links (SimpleMDE uses <a> tags) */
+.editor-toolbar a {
+  color: var(--text-muted) !important;
+}
+
+.editor-toolbar a.active,
+.editor-toolbar a:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* Toolbar separators */
+.editor-toolbar i.separator {
+  border-left-color: var(--border-color) !important;
+  border-right-color: transparent !important;
+}
+
+/* Toolbar disabled state */
+.editor-toolbar.disabled-for-preview a:not(.no-disable) {
+  background: transparent !important;
 }

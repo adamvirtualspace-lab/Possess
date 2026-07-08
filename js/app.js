@@ -29,7 +29,7 @@ const App = {
     this.startSyncCheck();
   },
 
-  setViewMode(mode) {
+  async setViewMode(mode) {
     this.state.viewMode = mode;
     document.getElementById('btn-edit').classList.toggle('active', mode === 'edit');
     document.getElementById('btn-preview').classList.toggle('active', mode === 'preview');
