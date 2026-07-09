@@ -1,9 +1,8 @@
-# to start :
+### how to setup :
 
-cd /workspace
-
-python -m pip install -r requirements.txt
-
+```
+cd [to the directory you cloned this to]
+pip install -r requirements.txt
 python app.py
-
 Open http://localhost:8000
+```
