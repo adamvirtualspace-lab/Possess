@@ -89,8 +89,14 @@
 
 .SimpleMDE-Statusdiv,
 .editor-toolbar {
+  border: none !important;
   background: rgba(0, 0, 0, 0.2) !important;
-  border-bottom: 1px solid var(--border-color) !important;
+  opacity: 1 !important;
+  box-shadow: 0 1px 0 var(--border-color);
+}
+
+.editor-toolbar:hover {
+  opacity: 1 !important;
 }
 
 /* Toolbar buttons */
