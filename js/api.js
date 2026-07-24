@@ -28,4 +28,20 @@ const API = {
     if (!res.ok) throw new Error(`Failed to check status: ${res.status}`);
     return res.json();
   },
+
+  async getVault() {
+    const res = await fetch('/api/vault');
+    if (!res.ok) throw new Error(`Failed to get vault: ${res.status}`);
+    return res.json();
+  },
+
+  async setVault(path) {
+    const res = await fetch('/api/vault', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+    if (!res.ok) throw new Error(`Failed to set vault: ${res.status}`);
+    return res.json();
+  },
 };

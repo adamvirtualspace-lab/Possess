@@ -9,13 +9,21 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 
+# Global vault path (can be changed via API)
+VAULT_PATH = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Validate notes dir on startup"""
+    global VAULT_PATH
     root_dir = Path(__file__).resolve().parent
-    if not os.path.exists(root_dir / "notes"):
-        os.makedirs(root_dir / "notes")
-        print(f"[PossessApp] Created default notes directory: {root_dir / 'notes'}")
+    default_vault = root_dir / "notes"
+    if not os.path.exists(default_vault):
+        os.makedirs(default_vault)
+        print(f"[PossessApp] Created default notes directory: {default_vault}")
+    VAULT_PATH = str(default_vault.resolve())
+    print(f"[PossessApp] Vault path: {VAULT_PATH}")
     yield
 
 
@@ -36,12 +44,41 @@ def index():
     return FileResponse("index.html", media_type="text/html")
 
 
+@app.get("/api/vault")
+def get_vault():
+    """Get current vault path"""
+    return {"path": VAULT_PATH}
+
+
+@app.post("/api/vault")
+def set_vault(body: dict):
+    """Set vault path"""
+    global VAULT_PATH
+    new_path = body.get("path", "")
+    
+    if not new_path:
+        raise HTTPException(400, "Path cannot be empty")
+    
+    # Resolve to absolute path
+    resolved = Path(new_path).resolve()
+    
+    if not os.path.exists(resolved):
+        raise HTTPException(404, f"Directory not found: {resolved}")
+    
+    if not os.path.isdir(resolved):
+        raise HTTPException(400, f"Not a directory: {resolved}")
+    
+    VAULT_PATH = str(resolved)
+    print(f"[PossessApp] Vault path changed to: {VAULT_PATH}")
+    return {"path": VAULT_PATH}
+
+
 @app.get("/api/folders")
 def list_folders(root: str | None = None):
-    root_dir = Path(__file__).resolve().parent
-    base = root or str((root_dir / "notes").resolve())
+    """List folders in vault"""
+    base = root if root else VAULT_PATH
 
-    if not os.path.isdir(base):
+    if not base or not os.path.isdir(base):
         raise HTTPException(404, f"Directory not found: {base}")
 
     folder_dict = {}
@@ -59,12 +96,14 @@ def list_folders(root: str | None = None):
 
 @app.get("/api/file/{filepath:path}")
 def get_file(filepath: str):
-    root_dir = Path(__file__).resolve().parent
-    notes_dir = str((root_dir / "notes").resolve())
-    full = os.path.normpath(os.path.join(notes_dir, filepath))
+    """Get file content"""
+    if not VAULT_PATH:
+        raise HTTPException(500, "Vault path not set")
+    
+    full = os.path.normpath(os.path.join(VAULT_PATH, filepath))
 
     # Security: prevent path traversals like "../../../etc/passwd"
-    if not full.startswith(notes_dir + os.sep) and full != notes_dir:
+    if not full.startswith(VAULT_PATH + os.sep) and full != VAULT_PATH:
         raise HTTPException(403, "Access denied")
 
     if not os.path.isfile(full):
@@ -77,11 +116,13 @@ def get_file(filepath: str):
 
 @app.post("/api/file/{filepath:path}")
 def save_file(filepath: str, body: dict):
-    root_dir = Path(__file__).resolve().parent
-    notes_dir = str((root_dir / "notes").resolve())
-    full = os.path.normpath(os.path.join(notes_dir, filepath))
+    """Save file content"""
+    if not VAULT_PATH:
+        raise HTTPException(500, "Vault path not set")
+    
+    full = os.path.normpath(os.path.join(VAULT_PATH, filepath))
 
-    if not full.startswith(notes_dir + os.sep) and full != notes_dir:
+    if not full.startswith(VAULT_PATH + os.sep) and full != VAULT_PATH:
         raise HTTPException(403, "Access denied")
 
     content = body.get("content", "")
@@ -92,11 +133,13 @@ def save_file(filepath: str, body: dict):
 
 @app.get("/api/status")
 def get_status(filepath: str, mtime: float = 0):
-    root_dir = Path(__file__).resolve().parent
-    notes_dir = str((root_dir / "notes").resolve())
-    full = os.path.normpath(os.path.join(notes_dir, filepath))
+    """Check file sync status"""
+    if not VAULT_PATH:
+        raise HTTPException(500, "Vault path not set")
+    
+    full = os.path.normpath(os.path.join(VAULT_PATH, filepath))
 
-    if not full.startswith(notes_dir + os.sep) and full != notes_dir:
+    if not full.startswith(VAULT_PATH + os.sep) and full != VAULT_PATH:
         raise HTTPException(403, "Access denied")
 
     if not os.path.isfile(full):
@@ -118,6 +161,6 @@ app.mount("/vendor", StaticFiles(directory=str(ROOT_DIR / "vendor")), name="vend
 if __name__ == "__main__":
     import uvicorn
     print(f"[PossessApp] Running on http://localhost:8000")
-    print(f"[PossessApp] Notes root directory: {ROOT_DIR / 'notes'}")
-    print("[Hint] Create some .md files in 'notes/' to get started!")
+    print(f"[PossessApp] Notes root directory: {VAULT_PATH}")
+    print("[Hint] Use the Browse button to select a different vault folder!")
     uvicorn.run(app, host="0.0.0.0", port=8000)
