@@ -177,7 +177,12 @@ def list_folders(root: str | None = None):
         raise HTTPException(404, f"Directory not found: {base}")
 
     folder_dict = {}
-    for dirpath, _dirnames, filenames in os.walk(base):
+    for dirpath, dirnames, filenames in os.walk(base):
+        # Pruned in place so os.walk never descends into them: an Obsidian
+        # vault keeps its config and plugins in .obsidian/ (and deleted notes
+        # in .trash/), none of which are the user's notes.
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+
         rel = os.path.relpath(dirpath, base)
         # Normalised to forward slashes so the client builds one consistent
         # path shape regardless of platform.

@@ -61,6 +61,17 @@
   color: var(--text-muted);
 }
 
+/* Deep folder names truncate instead of wrapping onto several lines. */
+.folder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arrow {
+  flex: 0 0 auto;
+}
+
 .folder-header:hover {
   background: rgba(255, 255, 255, 0.04);
 }
@@ -76,24 +87,22 @@
   transform: rotate(-90deg);
 }
 
-.file-list {
-  max-height: 500px;
-  overflow: hidden;
-  opacity: 1;
-  transition: max-height 0.35s ease, opacity 0.25s ease;
-}
-
-.file-list.collapsed {
-  max-height: 0 !important;
-  opacity: 0;
+/* Plain show/hide rather than a max-height transition: a height-based
+   animation needs a fixed ceiling, which silently clips folders holding more
+   notes than the ceiling allows. Correctness beats the slide here. */
+.folder-children.collapsed {
+  display: none;
 }
 
 .file-item {
-  padding: 6px 8px 6px 30px;
+  padding: 6px 8px;
   cursor: pointer;
   border-radius: 5px;
   font-size: 0.84rem;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .file-item:hover {
