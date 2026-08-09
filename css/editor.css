@@ -93,6 +93,29 @@
   background: rgba(0, 0, 0, 0.2) !important;
   opacity: 1 !important;
   box-shadow: 0 1px 0 var(--border-color);
+  /* Fixed height so the side-by-side preview pane below can reliably
+     start right underneath it — see .viewport .editor-preview-side. */
+  height: 48px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+}
+
+/* SimpleMDE's side-by-side preview pane is hardcoded position:fixed,
+   anchored to a 50px-tall fixed toolbar — it assumes side-by-side always
+   runs inside fullscreen. We deliberately keep side-by-side out of
+   fullscreen (see js/editor.js), so re-anchor the pane inside .viewport
+   (which is position:relative) instead of the browser viewport, using our
+   own fixed toolbar height above. Without this it floats over the top of
+   the page and covers the right half of the toolbar. */
+.viewport .editor-preview-side {
+  position: absolute !important;
+  top: 48px;
+  right: 0;
+  bottom: 0;
+  left: 50%;
+  width: 50% !important;
+  z-index: 2;
 }
 
 .editor-toolbar:hover {

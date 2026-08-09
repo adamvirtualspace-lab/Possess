@@ -1,9 +1,10 @@
 """PossessApp - Markdown Note Taking Backend"""
 
 import os
+import re
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
@@ -31,9 +32,29 @@ app.add_middleware(
 
 # ── Routes (must come BEFORE static mounts — mounts are catchall) ──
 
+_ASSET_TAG_RE = re.compile(r'((?:href|src)=")(/(?:css|js)/[^"]+)(")')
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return FileResponse("index.html", media_type="text/html")
+    """Serve index.html with cache-busting query strings on our own CSS/JS.
+
+    Plain <link>/<script> tags get cached by the browser with no way to know
+    a file changed underneath them. Tagging each with its file's mtime forces
+    a fresh fetch whenever that specific file is edited, without needing a
+    hard refresh — vendor/ is left alone since those never change.
+    """
+    root_dir = Path(__file__).resolve().parent
+    html = (root_dir / "index.html").read_text(encoding="utf-8")
+
+    def _bust(match: re.Match) -> str:
+        prefix, asset_path, suffix = match.groups()
+        asset_file = root_dir / asset_path.lstrip("/")
+        version = int(asset_file.stat().st_mtime) if asset_file.is_file() else 0
+        return f"{prefix}{asset_path}?v={version}{suffix}"
+
+    html = _ASSET_TAG_RE.sub(_bust, html)
+    return HTMLResponse(content=html)
 
 
 @app.get("/api/folders")
@@ -109,10 +130,25 @@ def get_status(filepath: str, mtime: float = 0):
 
 # ── Static file mounts (catchall — must come after routes) ──
 
+
+class NoCacheStaticFiles(StaticFiles):
+    """StaticFiles that forces browsers to revalidate on every load.
+
+    Plain StaticFiles sends no Cache-Control header, so browsers fall back to
+    heuristic caching and can keep serving a stale app.js/editor.js/etc. from
+    disk cache after we've edited it on disk, even across a hard reload.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 ROOT_DIR = Path(__file__).resolve().parent
-app.mount("/css", StaticFiles(directory=str(ROOT_DIR / "css")), name="css")
-app.mount("/js", StaticFiles(directory=str(ROOT_DIR / "js")), name="js")
-app.mount("/vendor", StaticFiles(directory=str(ROOT_DIR / "vendor")), name="vendor")
+app.mount("/css", NoCacheStaticFiles(directory=str(ROOT_DIR / "css")), name="css")
+app.mount("/js", NoCacheStaticFiles(directory=str(ROOT_DIR / "js")), name="js")
+app.mount("/vendor", NoCacheStaticFiles(directory=str(ROOT_DIR / "vendor")), name="vendor")
 
 
 if __name__ == "__main__":
