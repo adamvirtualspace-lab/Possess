@@ -8,8 +8,12 @@ build/
 
 # Virtual environment
 .venv/
+.venv_win/
 venv/
 ENV/
+
+# Local runtime state (remembered vault folder)
+possess-config.json
 
 # Node
 node_modules/

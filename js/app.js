@@ -13,11 +13,14 @@ const App = {
     Resizer.init();
     this.setViewMode('edit');
 
+    await Vault.init();
     await Sidebar.init();
 
     document.addEventListener('file-selected', (e) => {
       this.loadFile(e.detail.path);
     });
+
+    document.addEventListener('vault-changed', () => this.onVaultChanged());
 
     document.getElementById('btn-edit').addEventListener('click', () => {
       this.setViewMode('edit');
@@ -28,6 +31,20 @@ const App = {
     });
 
     this.startSyncCheck();
+  },
+
+  // The open file belongs to the old vault, so drop it before rebuilding the
+  // tree — otherwise the autosave/sync timers keep pointing at a stale path.
+  async onVaultChanged() {
+    Editor._clearSaveTimer();
+    this.state.currentFile = null;
+    this.state.currentMtime = null;
+    Editor.setContent('');
+    document.getElementById('current-file-name').textContent = 'No file selected';
+
+    await Sidebar.init();
+
+    if (this.state.viewMode === 'preview') await Preview.render('');
   },
 
   async setViewMode(mode) {

@@ -3,9 +3,12 @@ const Sidebar = {
   filesMap: {},
   currentFile: null,
 
+  // Also used to rebuild the tree after a vault switch, so any selection from
+  // the previous vault has to be cleared here rather than only on first load.
   async init() {
     const data = await API.listFolders();
     this.base = data.base;
+    this.currentFile = null;
     this.buildTree(data.folders);
   },
 
