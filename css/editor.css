@@ -113,9 +113,49 @@
   top: 48px;
   right: 0;
   bottom: 0;
-  left: 50%;
-  width: 50% !important;
+  left: var(--split-pos);
+  width: auto !important;
   z-index: 2;
+  /* Vendor draws a full 1px #ddd box here — light-theme leftover that reads
+     as a white outline on our dark background. The visible divider is now
+     .split-resizer, so drop the border entirely. */
+  border: none !important;
+}
+
+/* In fullscreen the wrapper is position:fixed under a 50px fixed toolbar, so
+   the pane can't be anchored to .viewport — restore vendor-style fixed
+   placement for that case (fullscreen first, then side-by-side). */
+.CodeMirror-fullscreen + .editor-preview-side {
+  position: fixed !important;
+  top: 50px;
+  left: var(--split-pos);
+  right: 0;
+  bottom: 0;
+  width: auto !important;
+}
+
+/* Vendor hardcodes the editor half to 50%; follow the draggable split. */
+.viewport .CodeMirror-sided {
+  width: var(--split-pos) !important;
+}
+
+/* Vendor fades the scrollable fullscreen toolbar's edges with hardcoded
+   white gradients, which bleed as bright smudges at both ends. Recolor them
+   to the toolbar's own background so they fade correctly on dark. */
+.editor-toolbar.fullscreen::before {
+  background: linear-gradient(
+    to right,
+    var(--bg-sidebar) 0,
+    rgba(11, 18, 32, 0) 100%
+  ) !important;
+}
+
+.editor-toolbar.fullscreen::after {
+  background: linear-gradient(
+    to left,
+    var(--bg-sidebar) 0,
+    rgba(11, 18, 32, 0) 100%
+  ) !important;
 }
 
 .editor-toolbar:hover {

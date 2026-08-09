@@ -51,13 +51,10 @@ const Editor = {
     };
 
     const sync = () => {
-      const sided = inst.isSideBySideActive();
-      const fullscreen = inst.isFullscreenActive();
-      if (fullscreen && (!sided || !fullscreenBeforeToggle)) {
-        // Either side-by-side just turned off and left fullscreen stuck,
-        // or side-by-side just turned on and dragged fullscreen in with it
-        // (and fullscreen wasn't already on for its own reason) — either
-        // way, we don't want fullscreen.
+      // Fullscreen that we didn't have before this toggle was dragged in by
+      // SimpleMDE, not asked for — drop it. Fullscreen the user turned on
+      // themselves is left alone, so they keep it while toggling split view.
+      if (inst.isFullscreenActive() && !fullscreenBeforeToggle) {
         exitFullscreenOnly();
       }
     };

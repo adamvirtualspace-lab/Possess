@@ -85,3 +85,81 @@
   overflow: auto;
   padding: 24px;
 }
+
+/* ── Drag handles (see js/resizer.js) ── */
+
+/* Sits in the flex row between sidebar and main content. Kept narrow but
+   with a wider invisible grab area via the ::before below. */
+.resizer {
+  flex: 0 0 auto;
+  width: 1px;
+  background: var(--border-color);
+  cursor: col-resize;
+  position: relative;
+  z-index: 5;
+}
+
+.resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
+}
+
+.resizer:hover,
+.resizer.dragging {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Divider between the side-by-side editor and preview panes. Absolute so it
+   can ride --split-pos; only shown while side-by-side is actually on. */
+.split-resizer {
+  position: absolute;
+  top: 48px;
+  bottom: 0;
+  left: var(--split-pos);
+  width: 1px;
+  margin-left: -1px;
+  background: var(--border-color);
+  cursor: col-resize;
+  z-index: 4;
+  display: none;
+}
+
+.split-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
+}
+
+.viewport.is-split .split-resizer {
+  display: block;
+}
+
+/* In fullscreen the panes are position:fixed under a 50px toolbar, so the
+   handle has to leave .viewport's coordinate space and follow them. */
+.split-resizer.is-fullscreen {
+  position: fixed;
+  top: 50px;
+  bottom: 0;
+  z-index: 10;
+}
+
+.split-resizer:hover,
+.split-resizer.dragging {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Applied to <body> mid-drag so the pointer doesn't select text or flicker
+   the cursor as it crosses the panes. */
+body.is-resizing {
+  user-select: none;
+  cursor: col-resize;
+}

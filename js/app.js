@@ -10,6 +10,7 @@ const App = {
     Editor.onSave = (content) => this.saveCurrentFile(content);
     Preview.init();
     Editor.init();
+    Resizer.init();
     this.setViewMode('edit');
 
     await Sidebar.init();

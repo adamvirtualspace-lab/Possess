@@ -1,12 +1,13 @@
 /* ── Sidebar Styles ── */
 
 .sidebar {
-  width: 260px;
-  min-width: 220px;
+  width: var(--sidebar-width);
+  flex: 0 0 auto;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .sidebar-header {

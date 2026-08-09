@@ -11,6 +11,10 @@
   /* Accent */
   --accent: #3689cf;
   --accent-hover: #5aa9e0;
+
+  /* Resizable panes (driven by js/resizer.js, persisted to localStorage) */
+  --sidebar-width: 260px;
+  --split-pos: 50%;
 }
 
 /* Base Reset */
