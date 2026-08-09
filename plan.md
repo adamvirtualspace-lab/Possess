@@ -27,14 +27,15 @@ possess/
 ├── css/                        # Component styles (all linked from index.html)
 │   ├── main.css                # Global vars, reset ✅
 │   ├── sidebar.css             # File tree styles ✅
-│   ├── layout.css              # Top-bar, buttons, viewport ✅ (new)
-│   ├── editor.css              # SimpleMDE dark overrides ✅
+│   ├── layout.css              # Top-bar, buttons, viewport, drag handles ✅
+│   ├── editor.css              # SimpleMDE dark overrides + split panes ✅
 │   └── preview.css             # Markdown preview rendering ✅
 │
 └── js/                         # Component scripts (all created)
     ├── api.js                  # Fetch endpoints ✅
     ├── sidebar.js              # Sidebar/file tree logic ✅
-    ├── editor.js               # SimpleMDE init/control ✅
+    ├── editor.js               # SimpleMDE init/control + toggle fixes ✅
+    ├── resizer.js              # Draggable sidebar / split dividers ✅
     ├── preview.js              # Marked rendering ✅
     └── app.js                  # Orchestration (sync, events) ✅
 ```
@@ -51,6 +52,7 @@ possess/
 ### 2. Markdown Editing (via SimpleMDE)
 - Rich text editor — edit with toolbar for bold, italic, headings, lists, links, etc.
 - Every 5s idle → auto-save `.md` content to disk + display rendered preview
+- Side-by-side and fullscreen are independent toggles (see Vendor Workarounds)
 
 ### 3. Image Preview & Editing
 - Images referenced in markdown render inline within editor view as thumbnails/inline images
@@ -62,6 +64,12 @@ possess/
 - Beautiful, clean CSS styling built into single HTML file
 - Dark/light theme toggle
 - Smooth transitions and animations
+
+### 5. Resizable Panes
+- Drag the sidebar ↔ editor divider and the editor ↔ preview divider
+- Positions held in CSS vars `--sidebar-width` / `--split-pos`, driven by `js/resizer.js`
+- Clamped (sidebar 180–560px, split 15–85%) and persisted to `localStorage`
+- Works in fullscreen too — the split handle switches to fixed positioning
 
 ---
 
@@ -83,7 +91,8 @@ possess/
 | `css/preview.css` | Markdown preview rendering | ✅ DONE |
 | `js/api.js` | Fetch endpoints | ✅ DONE |
 | `js/sidebar.js` | Sidebar/file tree logic | ✅ DONE |
-| `js/editor.js` | SimpleMDE init/control | ✅ DONE |
+| `js/editor.js` | SimpleMDE init/control + toggle fixes | ✅ DONE |
+| `js/resizer.js` | Draggable sidebar / split dividers | ✅ DONE |
 | `js/preview.js` | Marked rendering | ✅ DONE |
 | `js/app.js` | Orchestration (sync, events) | ✅ DONE |
 
@@ -93,7 +102,7 @@ possess/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/` | Serve index.html |
+| GET | `/` | Serve index.html (rewrites own CSS/JS tags with `?v={mtime}`) |
 | GET | `/api/folders?root={path}` | List `.md` files recursively as folder tree `{base, folders}` |
 | GET | `/api/file/{filepath}` | Get content + mtime of a `.md` file (supports nested paths) |
 | POST | `/api/file/{filepath}` | Save content to a `.md` file `{"content": "..."}` |
@@ -112,6 +121,27 @@ possess/
 
 ---
 
+## Vendor Workarounds (SimpleMDE)
+
+`vendor/simplemde.min.js|css` is unmodified — every fix lives in our own
+`css/editor.css` / `js/editor.js`, so the vendor files stay safe to re-download.
+SimpleMDE ships light-theme styling and assumes side-by-side always implies
+fullscreen, which caused these:
+
+| Vendor behaviour | Effect | Fix |
+|---|---|---|
+| `toggleSideBySide` force-enables fullscreen | Split view hijacked the whole screen; toggling off left fullscreen stuck | `_wireSideBySideFullscreenSync()` in `js/editor.js` drops fullscreen it didn't ask for, tracked via `mousedown` so deliberate fullscreen survives |
+| `.editor-preview-side` is `position:fixed; top:50px` | Preview pane floated over the page and covered half the toolbar | Re-anchored inside `.viewport`; fixed placement restored only under `.CodeMirror-fullscreen` |
+| `.editor-preview-side` has `border:1px solid #ddd` | White outline on dark background | Border removed; `.split-resizer` is the visible divider |
+| `.editor-toolbar.fullscreen::before/::after` are white gradients | Bright smudges at both toolbar ends | Recoloured to `--bg-sidebar` (they're scroll-fade hints, so kept not deleted) |
+| `.CodeMirror-sided { width: 50% !important }` | Split ratio not adjustable | Overridden to `var(--split-pos)` |
+
+Editor-mode state is detected by watching `CodeMirror-sided` / `CodeMirror-fullscreen`
+on the wrapper with a `MutationObserver` (`js/resizer.js`) — that catches the toolbar,
+F9/F11, and SimpleMDE's internal coupling without hooking each path.
+
+---
+
 ## Implementation Order
 
 1. ~~Set up project structure~~ ✅
@@ -120,6 +150,9 @@ possess/
 4. ~~Create CSS files (main, sidebar, layout, editor, preview)~~ ✅
 5. ~~Build JS files (api, sidebar, editor, preview, app)~~ ✅
 6. ~~Test run: `uvicorn app:app --reload`~~ ✅ All endpoints pass
+7. ~~Fix SimpleMDE side-by-side / fullscreen coupling + dark-theme bleed~~ ✅
+8. ~~Add static-asset cache busting so edits show without a hard refresh~~ ✅
+9. ~~Add draggable sidebar + editor/preview dividers (`js/resizer.js`)~~ ✅
 
 ---
 
@@ -127,5 +160,7 @@ possess/
 - Custom CSS (no framework) ✓
 - Single-page app with vanilla JS ✓
 - SimpleMDE for editing (not ContentEditable) ✓
+- Vendor files kept unpatched; overrides live in our own CSS/JS ✓
+- Pane sizes persisted to `localStorage` (not server-side) ✓
 - Root folder: `notes/` set in `app.py` ✓
 - `python3 app.py` to run (uses `.venv` if available)
