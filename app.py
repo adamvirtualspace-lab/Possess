@@ -5,6 +5,10 @@ import os
 import re
 import shutil
 import string
+import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
@@ -21,25 +25,51 @@ CONFIG_FILE = ROOT_DIR / "possess-config.json"
 VAULT = DEFAULT_VAULT
 
 
+def _load_config() -> dict:
+    """The whole config file, or an empty one if it's missing or corrupt."""
+    try:
+        config = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        return config if isinstance(config, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_config(**updates) -> None:
+    """Merge `updates` into the config file, leaving other keys alone."""
+    config = _load_config()
+    config.update(updates)
+    try:
+        CONFIG_FILE.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    except OSError as err:
+        print(f"[PossessApp] Could not write config: {err}")
+
+
 def _load_saved_vault() -> Path:
     """Read the remembered vault, falling back to notes/ if it's gone."""
-    try:
-        saved = json.loads(CONFIG_FILE.read_text(encoding="utf-8")).get("vault")
-    except (OSError, ValueError):
-        return DEFAULT_VAULT
-
+    saved = _load_config().get("vault")
     if saved and Path(saved).is_dir():
         return Path(saved).resolve()
     return DEFAULT_VAULT
 
 
 def _save_vault(path: Path) -> None:
-    try:
-        CONFIG_FILE.write_text(
-            json.dumps({"vault": str(path)}, indent=2), encoding="utf-8"
-        )
-    except OSError as err:
-        print(f"[PossessApp] Could not remember vault choice: {err}")
+    _save_config(vault=str(path))
+
+
+def _hooks_enabled(vault: Path) -> bool:
+    """Whether save-hooks may run for this vault.
+
+    Keyed by vault path and defaulting to False: opening a vault someone else
+    prepared must never start executing their Python on your machine because a
+    different vault had hooks turned on.
+    """
+    return str(vault) in _load_config().get("hooks_enabled_for", [])
+
+
+def _set_hooks_enabled(vault: Path, enabled: bool) -> None:
+    allowed = set(_load_config().get("hooks_enabled_for", []))
+    allowed.add(str(vault)) if enabled else allowed.discard(str(vault))
+    _save_config(hooks_enabled_for=sorted(allowed))
 
 
 def resolve_in_vault(filepath: str) -> Path:
@@ -217,7 +247,9 @@ def save_file(filepath: str, body: dict):
     full = resolve_in_vault(filepath)
     full.parent.mkdir(parents=True, exist_ok=True)
     full.write_text(body.get("content", ""), encoding="utf-8")
-    return {"saved": True, "mtime": full.stat().st_mtime}
+    mtime = full.stat().st_mtime
+    _run_save_hooks(filepath)
+    return {"saved": True, "mtime": mtime}
 
 
 @app.post("/api/create")
@@ -342,6 +374,362 @@ def search(q: str, limit: int = 100):
                 return {"query": q, "results": results}
 
     return {"query": q, "results": results}
+
+
+# Worked examples written into a new scripts/ folder on request. They are
+# ordinary files once created — edit or delete them freely.
+EXAMPLE_SCRIPTS = {
+    "README.md": r"""# Scripts
+
+Plain Python files, run by PossessApp against this vault.
+
+- `scripts/*.py` — run on demand from the Scripts panel
+- `scripts/hooks/*.py` — also run after every save, once you enable hooks
+
+Each script is run as `python <script> <vault path>`, with the working
+directory set to the vault and these environment variables:
+
+| Variable | Meaning |
+|---|---|
+| `POSSESS_VAULT` | Absolute path of the vault |
+| `POSSESS_NOTE` | The note that was just saved (hooks only) |
+
+Anything you print() shows up in the Scripts panel.
+
+There is no sandbox: these run as you, with your permissions. Only put code
+here you would run in a terminal yourself.
+
+```python
+import sys
+from pathlib import Path
+
+vault = Path(sys.argv[1])
+for path in vault.rglob("*.md"):
+    print(path.relative_to(vault), path.stat().st_size)
+```
+""",
+
+    "vault_stats.py": r'''"""Print a summary of the vault: notes, words, folders, longest files."""
+import sys
+from pathlib import Path
+
+vault = Path(sys.argv[1])
+notes = [p for p in vault.rglob("*.md") if ".git" not in p.parts]
+
+words = 0
+sizes = []
+for note in notes:
+    count = len(note.read_text(encoding="utf-8", errors="replace").split())
+    words += count
+    sizes.append((count, note.relative_to(vault)))
+
+folders = {p.parent.relative_to(vault) for p in notes}
+
+print(f"{len(notes)} notes in {len(folders)} folders")
+print(f"{words:,} words total")
+
+if sizes:
+    print("\nLongest notes:")
+    for count, rel in sorted(sizes, reverse=True)[:5]:
+        print(f"  {count:>6,} words  {rel}")
+''',
+
+    "find_todos.py": r'''"""List every unchecked task in the vault, grouped by note."""
+import re
+import sys
+from pathlib import Path
+
+vault = Path(sys.argv[1])
+TODO = re.compile(r"^\s*[-*]\s*\[ \]\s*(.+?)\s*$")
+
+total = 0
+for note in sorted(vault.rglob("*.md")):
+    hits = []
+    lines = note.read_text(encoding="utf-8", errors="replace").splitlines()
+    for lineno, line in enumerate(lines, 1):
+        match = TODO.match(line)
+        if match:
+            hits.append((lineno, match.group(1)))
+
+    if hits:
+        print(f"\n{note.relative_to(vault)}")
+        for lineno, text in hits:
+            print(f"  line {lineno}: {text}")
+        total += len(hits)
+
+print(f"\n{total} open task(s)" if total else "No open tasks.")
+''',
+
+    "hooks/sync_checkboxes.py": r'''"""Keep identically-worded checkboxes in step across the whole vault.
+
+A task tracked in more than one place — a daily note and a project note, say
+— has to be ticked in both. This finds checkbox items whose text matches
+after trimming and case-folding, and when any one of them is checked, checks
+the rest.
+
+Ticking wins over unticking on purpose: a sync that silently *unchecked*
+finished work because one stale copy lagged behind would lose real progress.
+To unmark a task, edit the copies yourself.
+
+Runs as a save-hook, so ticking a box in one note updates the others within a
+save cycle. Also runnable by hand from the Scripts panel.
+"""
+import re
+import sys
+from pathlib import Path
+
+vault = Path(sys.argv[1])
+
+# Captures: bullet and opening bracket, the mark, the closing bracket, the
+# label, trailing space. Matches "- [ ] text", "* [x] text", "  - [X] text".
+CHECKBOX = re.compile(r"^(\s*[-*]\s*\[)([ xX])(\]\s*)(.+?)(\s*)$")
+
+
+def key(label):
+    """Two labels are the same task if they read the same to a person."""
+    return " ".join(label.split()).casefold()
+
+
+notes = {}
+checked = set()
+
+for note in sorted(vault.rglob("*.md")):
+    if ".git" in note.parts:
+        continue
+
+    lines = note.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+    notes[note] = lines
+
+    for line in lines:
+        match = CHECKBOX.match(line.rstrip("\n"))
+        if match and match.group(2) in "xX":
+            checked.add(key(match.group(4)))
+
+if not checked:
+    print("No checked boxes to propagate.")
+    sys.exit(0)
+
+updated = 0
+for note, lines in notes.items():
+    touched = False
+
+    for i, raw in enumerate(lines):
+        ending = "\n" if raw.endswith("\n") else ""
+        match = CHECKBOX.match(raw.rstrip("\n"))
+        if not match or match.group(2) in "xX":
+            continue
+
+        if key(match.group(4)) in checked:
+            head, _, close, label, trail = match.groups()
+            lines[i] = f"{head}x{close}{label}{trail}{ending}"
+            touched = True
+            updated += 1
+
+    if touched:
+        note.write_text("".join(lines), encoding="utf-8")
+        print(f"updated {note.relative_to(vault)}")
+
+print(f"{updated} checkbox(es) brought in line" if updated else "Everything already in sync.")
+''',
+}
+
+
+# ── Python scripts ──
+#
+# Scripts are ordinary .py files in <vault>/scripts/, run as real subprocesses
+# with the interpreter this server runs under. They are NOT sandboxed: a script
+# can import os, subprocess, anything — it has exactly the access your user
+# account has. That is deliberate (the point is to do real Python against your
+# notes), so the trust boundary is "code you put in your own vault".
+#
+# Two ways to run:
+#   scripts/*.py        — run on demand from the Scripts panel
+#   scripts/hooks/*.py  — additionally run after every save, but only once
+#                         you enable hooks for that specific vault
+#
+# Each run gets the vault path as argv[1] and in the environment:
+#   POSSESS_VAULT  absolute path of the vault
+#   POSSESS_NOTE   the note that triggered it (save-hooks only)
+# stdout/stderr come back to the panel, so print() is the way to report.
+
+SCRIPTS_DIRNAME = "scripts"
+HOOKS_DIRNAME = "hooks"
+SCRIPT_TIMEOUT = 30
+HOOK_TIMEOUT = 10
+
+# One hook run at a time. Autosave fires every 5s, and a hook slower than that
+# would otherwise pile up runs that fight each other over the same files.
+_hook_lock = threading.Lock()
+
+
+def _scripts_dir(vault: Path | None = None) -> Path:
+    return (vault or VAULT.resolve()) / SCRIPTS_DIRNAME
+
+
+def _list_scripts(vault: Path) -> tuple[list[dict], list[Path]]:
+    """Every runnable script in the vault, as (manual list, hook paths)."""
+    root = _scripts_dir(vault)
+    manual, hooks = [], []
+
+    if not root.is_dir():
+        return manual, hooks
+
+    for path in sorted(root.glob("*.py")):
+        if path.is_file() and not path.name.startswith("_"):
+            manual.append({"name": path.name, "kind": "manual"})
+
+    hooks_root = root / HOOKS_DIRNAME
+    if hooks_root.is_dir():
+        for path in sorted(hooks_root.glob("*.py")):
+            if path.is_file() and not path.name.startswith("_"):
+                manual.append({"name": f"{HOOKS_DIRNAME}/{path.name}", "kind": "hook"})
+                hooks.append(path)
+
+    return manual, hooks
+
+
+def _resolve_script(name: str) -> Path:
+    """Resolve a script name from the client inside <vault>/scripts/."""
+    root = _scripts_dir().resolve()
+    full = (root / name).resolve()
+
+    if not full.is_relative_to(root):
+        raise HTTPException(403, "Access denied")
+    if full.suffix != ".py" or not full.is_file():
+        raise HTTPException(404, f"No such script: {name}")
+    return full
+
+
+def _run_script(path: Path, vault: Path, note: str | None, timeout: int) -> dict:
+    """Run one script and capture what it did."""
+    env = {**os.environ, "POSSESS_VAULT": str(vault), "PYTHONUNBUFFERED": "1"}
+    if note:
+        env["POSSESS_NOTE"] = note
+
+    started = time.monotonic()
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(path), str(vault)],
+            cwd=str(vault),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        stdout, stderr, code = proc.stdout, proc.stderr, proc.returncode
+    except subprocess.TimeoutExpired:
+        stdout, stderr, code = "", f"Timed out after {timeout}s — script killed.", -1
+    except OSError as err:
+        stdout, stderr, code = "", f"Could not start script: {err}", -1
+
+    return {
+        "script": path.name,
+        "code": code,
+        "stdout": stdout[-20000:],
+        "stderr": stderr[-20000:],
+        "seconds": round(time.monotonic() - started, 2),
+    }
+
+
+def _run_save_hooks(note: str) -> None:
+    """Run every hook after a save. Never raises — a broken hook must not
+    take the save down with it; its output goes to the server log."""
+    vault = VAULT.resolve()
+    if not _hooks_enabled(vault):
+        return
+
+    _, hooks = _list_scripts(vault)
+    if not hooks or not _hook_lock.acquire(blocking=False):
+        return
+
+    try:
+        for hook in hooks:
+            result = _run_script(hook, vault, note, HOOK_TIMEOUT)
+            if result["code"] != 0:
+                print(f"[PossessApp] hook {hook.name} failed ({result['code']}): "
+                      f"{result['stderr'].strip()[:400]}")
+            elif result["stdout"].strip():
+                print(f"[PossessApp] hook {hook.name}: {result['stdout'].strip()[:400]}")
+    finally:
+        _hook_lock.release()
+
+
+@app.get("/api/scripts")
+def list_scripts():
+    vault = VAULT.resolve()
+    scripts, _ = _list_scripts(vault)
+    return {
+        "scripts": scripts,
+        "dir": str(_scripts_dir(vault)),
+        "exists": _scripts_dir(vault).is_dir(),
+        "hooks_enabled": _hooks_enabled(vault),
+    }
+
+
+@app.post("/api/scripts/run")
+def run_script(body: dict):
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "No script named")
+
+    vault = VAULT.resolve()
+    script = _resolve_script(name)
+
+    # Snapshot before/after so the UI knows whether to reload the open note
+    # and rebuild the tree, instead of waiting for the 5s sync poll.
+    before = _vault_snapshot(vault)
+    result = _run_script(script, vault, body.get("note"), SCRIPT_TIMEOUT)
+    result["changed"] = sorted(_changed_since(before, _vault_snapshot(vault)))
+    return result
+
+
+@app.post("/api/scripts/hooks")
+def set_hooks(body: dict):
+    enabled = bool(body.get("enabled"))
+    vault = VAULT.resolve()
+    _set_hooks_enabled(vault, enabled)
+    print(f"[PossessApp] Save-hooks {'enabled' if enabled else 'disabled'} for {vault}")
+    return {"hooks_enabled": enabled}
+
+
+@app.post("/api/scripts/scaffold")
+def scaffold_scripts():
+    """Create scripts/ with worked examples, on explicit request only."""
+    vault = VAULT.resolve()
+    root = _scripts_dir(vault)
+    (root / HOOKS_DIRNAME).mkdir(parents=True, exist_ok=True)
+
+    written = []
+    for rel, source in EXAMPLE_SCRIPTS.items():
+        target = root / rel
+        if target.exists():
+            continue
+        target.write_text(source, encoding="utf-8")
+        written.append(rel)
+
+    return {"created": written, "dir": str(root)}
+
+
+def _vault_snapshot(vault: Path) -> dict[str, float]:
+    snapshot = {}
+    for dirpath, dirnames, filenames in os.walk(vault):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for fname in filenames:
+            if not fname.endswith(".md"):
+                continue
+            full = Path(dirpath) / fname
+            try:
+                snapshot[str(full)] = full.stat().st_mtime
+            except OSError:
+                continue
+    return snapshot
+
+
+def _changed_since(before: dict[str, float], after: dict[str, float]) -> set[str]:
+    """Notes created, deleted or rewritten between two snapshots."""
+    changed = set(before) ^ set(after)
+    changed |= {p for p in set(before) & set(after) if before[p] != after[p]}
+    return changed
 
 
 @app.get("/api/status")

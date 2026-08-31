@@ -32,6 +32,7 @@
   <link rel="stylesheet" href="/css/editor.css" />
   <link rel="stylesheet" href="/css/preview.css" />
   <link rel="stylesheet" href="/css/vault.css" />
+  <link rel="stylesheet" href="/css/scripts.css" />
 
   <!-- JS Libraries (loaded before our scripts) -->
   <script src="/vendor/marked.min.js"></script>
@@ -60,6 +61,7 @@
         <div class="tool-row">
           <button class="tool-btn" id="btn-new-note" title="New note">+ Note</button>
           <button class="tool-btn" id="btn-new-folder" title="New folder">+ Folder</button>
+          <button class="tool-btn" id="btn-scripts" title="Python scripts">Scripts</button>
         </div>
       </div>
 
@@ -91,6 +93,36 @@
 
   <!-- ── SIDEBAR CONTEXT MENU ── -->
   <div class="context-menu" id="context-menu" hidden></div>
+
+  <!-- ── SCRIPTS PANEL ── -->
+  <div class="modal-backdrop" id="scripts-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="scripts-title">
+      <div class="modal-header">
+        <h2 id="scripts-title">Python scripts</h2>
+        <button class="modal-close" id="scripts-close" title="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="scripts-dir" id="scripts-dir"></p>
+        <div class="scripts-list" id="scripts-list"></div>
+
+        <div class="scripts-hooks-row" id="scripts-hooks-row" hidden>
+          <input type="checkbox" id="scripts-hooks" />
+          <label class="scripts-hooks-text" for="scripts-hooks">
+            Run <code>scripts/hooks/</code> after every save
+            <small>Off by default for each vault. Scripts run as you, with your
+            permissions — turn this on only for code you trust.</small>
+          </label>
+        </div>
+
+        <pre class="scripts-output" id="scripts-output"></pre>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn" id="scripts-done">Close</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ── VAULT PICKER ── -->
   <div class="modal-backdrop" id="vault-modal" hidden>
@@ -128,6 +160,7 @@
   <script src="/js/vault.js"></script>
   <script src="/js/notes.js"></script>
   <script src="/js/theme.js"></script>
+  <script src="/js/scripts.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

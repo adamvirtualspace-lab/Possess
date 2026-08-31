@@ -70,6 +70,24 @@ const API = {
     return res.json();
   },
 
+  async listScripts() {
+    const res = await fetch('/api/scripts');
+    if (!res.ok) throw new Error(`Failed to list scripts: ${res.status}`);
+    return res.json();
+  },
+
+  async runScript(name, note) {
+    return this._post('/api/scripts/run', { name, note }, 'Failed to run script');
+  },
+
+  async setHooks(enabled) {
+    return this._post('/api/scripts/hooks', { enabled }, 'Failed to change hooks');
+  },
+
+  async scaffoldScripts() {
+    return this._post('/api/scripts/scaffold', {}, 'Failed to create scripts folder');
+  },
+
   async _post(url, body, fallback) {
     const res = await fetch(url, {
       method: 'POST',

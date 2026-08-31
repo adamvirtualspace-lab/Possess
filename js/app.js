@@ -18,6 +18,7 @@ const App = {
     ContextMenu.init();
     Notes.init();
     Theme.init();
+    Scripts.init();
 
     document.addEventListener('file-selected', (e) => {
       this.loadFile(e.detail.path);
@@ -27,6 +28,7 @@ const App = {
 
     document.addEventListener('entry-renamed', (e) => this.onEntryRenamed(e.detail));
     document.addEventListener('entry-deleted', (e) => this.onEntryDeleted(e.detail));
+    document.addEventListener('vault-mutated', () => this.onVaultMutated());
 
     document.getElementById('btn-edit').addEventListener('click', () => {
       this.setViewMode('edit');
@@ -51,6 +53,26 @@ const App = {
     await Sidebar.init();
 
     if (this.state.viewMode === 'preview') await Preview.render('');
+  },
+
+  // A script just rewrote notes on disk. Rebuild the tree and pull the open
+  // note back in rather than waiting for the sync poll to notice.
+  async onVaultMutated() {
+    await Sidebar.refresh();
+
+    if (!this.state.currentFile) return;
+
+    try {
+      const data = await API.getFile(this.state.currentFile);
+      if (data.mtime === this.state.currentMtime) return;
+
+      this.state.currentMtime = data.mtime;
+      Editor.setContent(data.content);
+      if (this.state.viewMode === 'preview') await Preview.render(data.content);
+    } catch (err) {
+      // The script deleted or moved the open note.
+      this.closeCurrentFile();
+    }
   },
 
   // A rename moves the file the autosave and sync timers point at, so follow

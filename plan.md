@@ -38,6 +38,7 @@ possess/
     ├── resizer.js              # Draggable sidebar / split dividers ✅
     ├── preview.js              # Marked rendering ✅
     ├── theme.js                # Light/dark switching + persistence ✅
+    ├── scripts.js              # Python scripts panel (list, run, hooks) ✅
     ├── notes.js                # Create/rename/delete + right-click menu ✅
     └── app.js                  # Orchestration (sync, events) ✅
 ```
@@ -78,11 +79,26 @@ possess/
 - Renaming or deleting the open note updates (or clears) the editor so autosave
   never writes back to a path that moved or is gone
 
-### 6. Search
+### 6. Python Scripts
+- Plain `.py` files in `<vault>/scripts/`, run by the Scripts panel
+- Run as real subprocesses under the server's interpreter — full stdlib,
+  `os.walk`, `pathlib`, anything. **Not sandboxed**: a script has exactly the
+  access your user account has
+- Each run gets the vault as `argv[1]`, plus `POSSESS_VAULT` and (for hooks)
+  `POSSESS_NOTE` in the environment; `print()` goes to the panel
+- `scripts/hooks/*.py` additionally run after every save — **off by default,
+  per vault**, so opening a vault someone else prepared never starts executing
+  their code. One hook at a time; 10s timeout (30s for manual runs)
+- A run reports which notes changed on disk, so the tree and the open note
+  refresh immediately instead of waiting for the 5s sync poll
+- Shipped examples: vault stats, an open-task list, and `sync_checkboxes.py`,
+  which ticks identically-worded checkboxes across the vault together
+
+### 7. Search
 - Sidebar search box filters the vault by filename *and* note contents
 - Results show the first matching line as a snippet; Esc clears
 
-### 7. Resizable Panes
+### 8. Resizable Panes
 - Drag the sidebar ↔ editor divider and the editor ↔ preview divider
 - Positions held in CSS vars `--sidebar-width` / `--split-pos`, driven by `js/resizer.js`
 - Clamped (sidebar 180–560px, split 15–85%) and persisted to `localStorage`
@@ -114,6 +130,8 @@ possess/
 | `js/preview.js` | Marked rendering | ✅ DONE |
 | `js/notes.js` | Create/rename/delete + context menu + search box | ✅ DONE |
 | `js/theme.js` | Light/dark toggle, persisted, follows the OS by default | ✅ DONE |
+| `js/scripts.js` | Scripts panel — list, run, output, hooks switch | ✅ DONE |
+| `css/scripts.css` | Scripts panel styling | ✅ DONE |
 | `js/app.js` | Orchestration (sync, events) | ✅ DONE |
 
 ---
@@ -131,6 +149,10 @@ possess/
 | POST | `/api/rename` | Rename a note or folder in place `{path, name}` |
 | POST | `/api/delete` | Delete a note, or a folder and its contents `{path}` |
 | GET | `/api/search?q=...` | Full-text + filename search, returns `{results:[{path,name,snippet}]}` |
+| GET | `/api/scripts` | List `<vault>/scripts/*.py` + hook state |
+| POST | `/api/scripts/run` | Run one script, return `{stdout, stderr, code, seconds, changed}` |
+| POST | `/api/scripts/hooks` | Enable/disable save-hooks for the current vault |
+| POST | `/api/scripts/scaffold` | Create `scripts/` with a README and three examples |
 
 ---
 
@@ -184,7 +206,8 @@ F9/F11, and SimpleMDE's internal coupling without hooking each path.
 10. ~~Add note/folder create, rename, delete + vault search (`js/notes.js`)~~ ✅
 11. ~~Replace SimpleMDE's CDN FontAwesome with local SVG icons (`css/icons.css`)~~ ✅
 12. ~~Dark/light theme toggle (`js/theme.js`, tokens in `css/main.css`)~~ ✅
-13. Inline image rendering in the editor
+13. ~~Add Python script support: manual runs + save-hooks (`js/scripts.js`)~~ ✅
+14. Inline image rendering in the editor
 
 ---
 
