@@ -49,6 +49,10 @@ const ImagePaste = {
       const result = await API.pasteImage(App.state.currentFile, file.name, data);
       this._replaceToken(token, `![](${result.markdown})`);
       InlineImages.schedule(0);
+
+      // The image file is already on disk; save so the note that references
+      // it catches up straight away rather than at the next idle timeout.
+      await Editor.saveNow();
     } catch (err) {
       this._replaceToken(token, '');
       this._flash(err.message);

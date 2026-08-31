@@ -107,6 +107,15 @@ const Editor = {
     this._dirty = false;
   },
 
+  // Persist now instead of waiting out the idle timer. For an edit whose side
+  // effect already exists on disk — a pasted image is written the moment it's
+  // pasted — the link to it shouldn't lag five seconds behind, or closing the
+  // tab in between leaves an unreferenced file in the images folder.
+  async saveNow() {
+    this._clearSaveTimer();
+    if (this._dirty && this.onSave) await this.onSave(this.getContent());
+  },
+
   _scheduleSave() {
     this._clearSaveTimer();
     this._saveTimer = setTimeout(() => {

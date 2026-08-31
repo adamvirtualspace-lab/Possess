@@ -73,6 +73,8 @@ possess/
   `<note stem>_images/` beside the note, then linked with a note-relative
   path — so a note and its pictures move, copy and delete as one unit
   (`js/paste.js`, `POST /api/paste-image`)
+- The note is saved immediately after a paste rather than at the next idle
+  timeout, so the image file and the link to it can't get out of step
 
 ### 4. Auto-Save & Sync
 - Edit → idle for 5s → auto-save `.md` to disk + display clean preview
