@@ -41,6 +41,8 @@ possess/
     ├── images.js               # Inline image widgets in the editor ✅
     ├── paste.js                # Paste an image → save beside note + embed ✅
     ├── undo.js                 # Undo bar for delete/rename ✅
+    ├── wikilinks.js            # [[link]] resolution, rendering, following ✅
+    ├── linkcomplete.js         # [[ autocomplete popup ✅
     ├── theme.js                # Light/dark switching + persistence ✅
     ├── scripts.js              # Python scripts panel (list, run, hooks) ✅
     ├── notes.js                # Create/rename/delete + right-click menu ✅
@@ -108,6 +110,21 @@ possess/
 - Restore refuses to overwrite: if something new occupies the old path, it
   returns 409 rather than clobbering it
 
+### 5c. Wiki Links
+- `[[Note]]`, `[[folder/Note]]`, `[[Note|display text]]`, `[[Note#heading]]`
+- Resolution runs against the note list the sidebar already holds — no request
+  per keystroke. Precedence: explicit path, then a note beside the linking one,
+  then the vault root, then the nearest note of that name anywhere
+- Rendered as clickable links in the preview and the side-by-side pane; a link
+  to a note that doesn't exist yet is dashed and muted, and clicking it creates
+  the note (offered back through the undo bar)
+- In the editor: `[[...]]` is highlighted and Ctrl/Cmd+click follows it, while a
+  plain click still just places the cursor
+- Typing `[[` opens an autocomplete of note names; Enter or Tab inserts the
+  shortest form that still resolves back to that note
+- Links inside code spans and fenced blocks are left alone in both the renderer
+  and the editor — `[[this]]` in a code sample is not a link
+
 ### 6. Python Scripts
 - Plain `.py` files in `<vault>/scripts/`, run by the Scripts panel
 - Run as real subprocesses under the server's interpreter — full stdlib,
@@ -164,6 +181,9 @@ possess/
 | `js/images.js` | Inline image thumbnails as CodeMirror line widgets | ✅ DONE |
 | `js/paste.js` | Paste-to-embed: upload, file beside the note, insert link | ✅ DONE |
 | `js/undo.js` | Undo bar for destructive file operations | ✅ DONE |
+| `js/wikilinks.js` | `[[link]]` resolution, rendering, click-to-open/create | ✅ DONE |
+| `js/linkcomplete.js` | Autocomplete popup for `[[` | ✅ DONE |
+| `css/wikilinks.css` | Link + autocomplete styling | ✅ DONE |
 | `css/undo.css` | Undo bar styling | ✅ DONE |
 | `css/images.css` | Inline thumbnail + missing-image styling | ✅ DONE |
 | `css/scripts.css` | Scripts panel styling | ✅ DONE |
@@ -248,6 +268,8 @@ F9/F11, and SimpleMDE's internal coupling without hooking each path.
 14. ~~Inline image rendering in the editor (`js/images.js`, `/api/asset`)~~ ✅
 15. ~~Paste an image into a note, filed beside it and auto-embedded (`js/paste.js`)~~ ✅
 16. ~~Undo for deletes and renames, backed by a vault trash (`js/undo.js`)~~ ✅
+17. ~~`[[Wiki links]]` with autocomplete and click-to-create (`js/wikilinks.js`)~~ ✅
+18. Backlinks panel — which notes link here
 
 ---
 
