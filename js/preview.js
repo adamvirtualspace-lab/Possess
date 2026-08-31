@@ -255,6 +255,8 @@ const Preview = {
     textarea.title = 'Edit the complete fenced code block · Ctrl+Enter to save · Escape to cancel';
     textarea.rows = Math.max(3, textarea.value.split('\n').length);
 
+    const previewRoot = blockElement.closest('#preview-panel, .editor-preview-side');
+    const startLine = Number(blockElement.dataset.mdLineIndex);
     const originalHeight = this._matchEditorLayout(textarea, blockElement);
     blockElement.hidden = true;
     blockElement.before(textarea);
@@ -273,7 +275,7 @@ const Preview = {
       textarea.remove();
       blockElement.hidden = false;
     };
-    const commit = async () => {
+    const commit = async (moveDirection = 0) => {
       if (finished) return;
       finished = true;
 
@@ -290,6 +292,12 @@ const Preview = {
       if (replacement === latestRange.raw) {
         textarea.remove();
         blockElement.hidden = false;
+        if (moveDirection) {
+          const boundary = moveDirection > 0
+            ? startLine + textarea.value.split('\n').length - 1
+            : startLine;
+          this._editAdjacentLine(previewRoot, boundary, moveDirection);
+        }
         return;
       }
 
@@ -297,6 +305,12 @@ const Preview = {
         latest.slice(0, latestRange.start) + replacement + latest.slice(latestRange.end)
       );
       await Editor.saveNow();
+      if (moveDirection) {
+        const boundary = moveDirection > 0
+          ? startLine + textarea.value.split('\n').length - 1
+          : startLine;
+        setTimeout(() => this._editAdjacentLine(previewRoot, boundary, moveDirection), 0);
+      }
     };
 
     textarea.addEventListener('keydown', (event) => {
@@ -306,10 +320,26 @@ const Preview = {
       } else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
         commit();
+      } else if (event.key === 'ArrowDown' && this._caretOnLastCodeLine(textarea)) {
+        event.preventDefault();
+        commit(1);
+      } else if (event.key === 'ArrowUp' && this._caretOnFirstCodeLine(textarea)) {
+        event.preventDefault();
+        commit(-1);
       }
     });
     textarea.addEventListener('input', resize);
     textarea.addEventListener('blur', commit, { once: true });
+  },
+
+  _caretOnFirstCodeLine(textarea) {
+    const firstBreak = textarea.value.indexOf('\n');
+    return firstBreak < 0 || textarea.selectionStart <= firstBreak;
+  },
+
+  _caretOnLastCodeLine(textarea) {
+    const lastBreak = textarea.value.lastIndexOf('\n');
+    return lastBreak < 0 || textarea.selectionStart > lastBreak;
   },
 
   _editAdjacentLine(root, currentLine, direction) {
