@@ -1,5 +1,7 @@
 """PossessApp - Markdown Note Taking Backend"""
 
+import base64
+import binascii
 import json
 import mimetypes
 import os
@@ -10,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
@@ -767,6 +770,116 @@ def get_asset(filepath: str):
 
     return FileResponse(full, media_type=media_type or "application/octet-stream",
                         headers=headers)
+
+
+# Pasted images live in "<note stem>_images/" beside the note, so a note and
+# its pictures move, copy and delete as one obvious unit.
+IMAGES_SUFFIX = "_images"
+PASTE_MAX_BYTES = 25 * 1024 * 1024
+
+# Leading bytes are trusted over the browser's declared MIME type, which is
+# whatever the source app put on the clipboard.
+_MAGIC = (
+    (b"\x89PNG\r\n\x1a\n", ".png"),
+    (b"\xff\xd8\xff", ".jpg"),
+    (b"GIF87a", ".gif"),
+    (b"GIF89a", ".gif"),
+    (b"BM", ".bmp"),
+)
+
+
+def _sniff_image(data: bytes) -> str | None:
+    """The real extension for these bytes, or None if it isn't an image."""
+    for magic, suffix in _MAGIC:
+        if data.startswith(magic):
+            return suffix
+
+    # RIFF....WEBP and ....ftypavif carry their marker past the first bytes.
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    if data[4:8] == b"ftyp" and b"avif" in data[8:24]:
+        return ".avif"
+
+    head = data[:400].lstrip()
+    if head.startswith(b"<svg") or (head.startswith(b"<?xml") and b"<svg" in data[:2000]):
+        return ".svg"
+    return None
+
+
+def _unique_path(folder: Path, stem: str, suffix: str) -> Path:
+    """A path in `folder` that doesn't exist yet, suffixing -2, -3 ... """
+    candidate = folder / f"{stem}{suffix}"
+    counter = 2
+    while candidate.exists():
+        candidate = folder / f"{stem}-{counter}{suffix}"
+        counter += 1
+    return candidate
+
+
+@app.post("/api/paste-image")
+def paste_image(body: dict):
+    """Save an image pasted into a note, and say how to link to it.
+
+    The client sends base64 because a clipboard image has no file on disk to
+    upload. Returns the path relative to the note, which is what goes in the
+    markdown — an absolute path would break if the vault moved.
+    """
+    note = (body.get("note") or "").strip().strip("/")
+    if not note:
+        raise HTTPException(400, "No note given — open a note before pasting")
+
+    note_path = resolve_in_vault(note)
+    if not note_path.is_file():
+        raise HTTPException(404, f"No such note: {note}")
+
+    raw = body.get("data") or ""
+    if "," in raw and raw.startswith("data:"):
+        raw = raw.split(",", 1)[1]
+
+    try:
+        data = base64.b64decode(raw, validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(400, "Image data was not valid base64")
+
+    if not data:
+        raise HTTPException(400, "Image data was empty")
+    if len(data) > PASTE_MAX_BYTES:
+        raise HTTPException(
+            413, f"Image is {len(data) // 1048576}MB; the limit is "
+                 f"{PASTE_MAX_BYTES // 1048576}MB"
+        )
+
+    suffix = _sniff_image(data)
+    if suffix is None:
+        raise HTTPException(415, "That doesn't look like an image")
+
+    folder = note_path.parent / f"{note_path.stem}{IMAGES_SUFFIX}"
+    folder.mkdir(parents=True, exist_ok=True)
+
+    stem = _paste_stem(body.get("name"))
+    target = _unique_path(folder, stem, suffix)
+    target.write_bytes(data)
+
+    vault = VAULT.resolve()
+    return {
+        "path": target.relative_to(vault).as_posix(),
+        # What the note should link to: sibling folder, so it survives the
+        # vault being moved or renamed.
+        "markdown": f"{folder.name}/{target.name}",
+        "bytes": len(data),
+    }
+
+
+def _paste_stem(name: str | None) -> str:
+    """A safe filename stem: the source name when it's usable, else a stamp."""
+    if name:
+        cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(name).stem).strip("-.")
+        # "image" is what browsers call every clipboard bitmap; a timestamp
+        # tells two screenshots apart where "image-7" doesn't.
+        if cleaned and cleaned.lower() not in {"image", "screenshot", "untitled"}:
+            return cleaned[:60]
+
+    return f"pasted-{datetime.now():%Y%m%d-%H%M%S}"
 
 
 @app.get("/api/status")

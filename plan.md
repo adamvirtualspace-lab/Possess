@@ -39,6 +39,7 @@ possess/
     ├── preview.js              # Marked rendering + image path rewriting ✅
     ├── assets.js               # Vault-relative image path resolution ✅
     ├── images.js               # Inline image widgets in the editor ✅
+    ├── paste.js                # Paste an image → save beside note + embed ✅
     ├── theme.js                # Light/dark switching + persistence ✅
     ├── scripts.js              # Python scripts panel (list, run, hooks) ✅
     ├── notes.js                # Create/rename/delete + right-click menu ✅
@@ -68,6 +69,10 @@ possess/
   pane, via `previewRender`, so images resolve in all three views
 - A path that doesn't resolve says so inline instead of leaving a broken glyph
 - External URLs are left untouched
+- **Paste to embed**: paste an image into the editor and it's written to
+  `<note stem>_images/` beside the note, then linked with a note-relative
+  path — so a note and its pictures move, copy and delete as one unit
+  (`js/paste.js`, `POST /api/paste-image`)
 
 ### 4. Auto-Save & Sync
 - Edit → idle for 5s → auto-save `.md` to disk + display clean preview
@@ -142,6 +147,7 @@ possess/
 | `js/scripts.js` | Scripts panel — list, run, output, hooks switch | ✅ DONE |
 | `js/assets.js` | Resolve note-relative image paths to `/api/asset` URLs | ✅ DONE |
 | `js/images.js` | Inline image thumbnails as CodeMirror line widgets | ✅ DONE |
+| `js/paste.js` | Paste-to-embed: upload, file beside the note, insert link | ✅ DONE |
 | `css/images.css` | Inline thumbnail + missing-image styling | ✅ DONE |
 | `css/scripts.css` | Scripts panel styling | ✅ DONE |
 | `js/app.js` | Orchestration (sync, events) | ✅ DONE |
@@ -166,6 +172,7 @@ possess/
 | POST | `/api/scripts/hooks` | Enable/disable save-hooks for the current vault |
 | POST | `/api/scripts/scaffold` | Create `scripts/` with a README and three examples |
 | GET | `/api/asset/{path}` | Serve an image from the vault (allow-listed extensions) |
+| POST | `/api/paste-image` | Save a pasted image to `<note>_images/`, return its note-relative link |
 
 ---
 
@@ -221,6 +228,7 @@ F9/F11, and SimpleMDE's internal coupling without hooking each path.
 12. ~~Dark/light theme toggle (`js/theme.js`, tokens in `css/main.css`)~~ ✅
 13. ~~Add Python script support: manual runs + save-hooks (`js/scripts.js`)~~ ✅
 14. ~~Inline image rendering in the editor (`js/images.js`, `/api/asset`)~~ ✅
+15. ~~Paste an image into a note, filed beside it and auto-embedded (`js/paste.js`)~~ ✅
 
 ---
 

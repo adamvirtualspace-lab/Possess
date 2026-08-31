@@ -33,6 +33,12 @@
   color: var(--text-muted);
 }
 
+/* Transient paste failures borrow the filename slot rather than opening a
+   dialog over the text you were writing. */
+.top-bar span.is-warning {
+  color: var(--danger);
+}
+
 /* ── Toggle buttons ── */
 
 .btn-group {

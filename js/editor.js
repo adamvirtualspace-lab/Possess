@@ -33,6 +33,7 @@ const Editor = {
 
     this._wireSideBySideFullscreenSync();
     InlineImages.init();
+    ImagePaste.init();
   },
 
   // SimpleMDE's side-by-side toggle silently forces fullscreen on when it's

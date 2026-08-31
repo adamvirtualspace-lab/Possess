@@ -70,6 +70,10 @@ const API = {
     return res.json();
   },
 
+  async pasteImage(note, name, data) {
+    return this._post('/api/paste-image', { note, name, data }, 'Failed to save image');
+  },
+
   async listScripts() {
     const res = await fetch('/api/scripts');
     if (!res.ok) throw new Error(`Failed to list scripts: ${res.status}`);
