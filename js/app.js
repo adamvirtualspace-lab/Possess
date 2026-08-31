@@ -15,12 +15,21 @@ const App = {
 
     await Vault.init();
     await Sidebar.init();
+    ContextMenu.init();
+    UndoBar.init();
+    Notes.init();
+    Theme.init();
+    Scripts.init();
 
     document.addEventListener('file-selected', (e) => {
       this.loadFile(e.detail.path);
     });
 
     document.addEventListener('vault-changed', () => this.onVaultChanged());
+
+    document.addEventListener('entry-renamed', (e) => this.onEntryRenamed(e.detail));
+    document.addEventListener('entry-deleted', (e) => this.onEntryDeleted(e.detail));
+    document.addEventListener('vault-mutated', () => this.onVaultMutated());
 
     document.getElementById('btn-edit').addEventListener('click', () => {
       this.setViewMode('edit');
@@ -45,6 +54,66 @@ const App = {
     await Sidebar.init();
 
     if (this.state.viewMode === 'preview') await Preview.render('');
+  },
+
+  // A script just rewrote notes on disk. Rebuild the tree and pull the open
+  // note back in rather than waiting for the sync poll to notice.
+  async onVaultMutated() {
+    await Sidebar.refresh();
+
+    if (!this.state.currentFile) return;
+
+    try {
+      const data = await API.getFile(this.state.currentFile);
+      if (data.mtime === this.state.currentMtime) return;
+
+      this.state.currentMtime = data.mtime;
+      Editor.setContent(data.content);
+      if (this.state.viewMode === 'preview') await Preview.render(data.content);
+    } catch (err) {
+      // The script deleted or moved the open note.
+      this.closeCurrentFile();
+    }
+  },
+
+  // A rename moves the file the autosave and sync timers point at, so follow
+  // it — including when a renamed folder carried the open note with it.
+  onEntryRenamed({ kind, from, to }) {
+    const open = this.state.currentFile;
+    if (!open) return;
+
+    let moved = null;
+    if (kind === 'note' && open === from) moved = to;
+    else if (kind === 'folder' && open.startsWith(`${from}/`)) {
+      moved = to + open.slice(from.length);
+    }
+    if (!moved) return;
+
+    this.state.currentFile = moved;
+    document.getElementById('current-file-name').textContent = moved;
+  },
+
+  // Deleting the open note leaves the editor pointing at a path that no longer
+  // exists; clear it so autosave doesn't recreate the file we just removed.
+  onEntryDeleted({ kind, path }) {
+    const open = this.state.currentFile;
+    const affected = open && (
+      (kind === 'note' && open === path) ||
+      (kind === 'folder' && open.startsWith(`${path}/`))
+    );
+    if (!affected) return;
+
+    this.closeCurrentFile();
+  },
+
+  closeCurrentFile() {
+    Editor._clearSaveTimer();
+    this.state.currentFile = null;
+    this.state.currentMtime = null;
+    Sidebar.currentFile = null;
+    Editor.setContent('');
+    document.getElementById('current-file-name').textContent = 'No file selected';
+    if (this.state.viewMode === 'preview') Preview.render('');
   },
 
   async setViewMode(mode) {

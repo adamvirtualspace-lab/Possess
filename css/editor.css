@@ -1,4 +1,4 @@
-/* ── Editor Styles (SimpleMDE Dark Overrides) ── */
+/* ── Editor Styles (SimpleMDE theme overrides) ── */
 
 /* CodeMirror container / editor area */
 .editor-container {
@@ -22,24 +22,24 @@
 /* Gutter — line numbers, fold indicators */
 .CodeMirror-gutters {
   background: transparent !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-right: 1px solid var(--border-faint) !important;
   color: var(--text-muted) !important;
 }
 
 /* Active line highlight */
 .CodeMirror-activeline-background {
-  background: rgba(54, 137, 207, 0.07);
+  background: var(--accent-weak);
 }
 
 /* Cursor */
 .CodeMirror-cursor {
-  border-left-color: #5aa9e0 !important;
+  border-left-color: var(--accent-hover) !important;
   border-left-width: 2px;
 }
 
 /* Selection */
 .CodeMirror-selected {
-  background: rgba(54, 137, 207, 0.2) !important;
+  background: var(--accent-select) !important;
 }
 
 /* Active line cursor */
@@ -55,8 +55,8 @@
 /* Matching bracket / brace highlight */
 .CodeMirror-matchingbracket,
 .CodeMirror-nonmatchingbracket {
-  background: rgba(255, 170, 64, 0.25);
-  color: #ffb040;
+  background: var(--match-bg);
+  color: var(--match-text);
   font-weight: bold;
 }
 
@@ -72,7 +72,7 @@
 }
 
 .CodeMirror-dialog input {
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--bg-inset);
   border: 1px solid var(--border-color);
   color: var(--text-main);
   padding: 4px 8px;
@@ -90,7 +90,7 @@
 .SimpleMDE-Statusdiv,
 .editor-toolbar {
   border: none !important;
-  background: rgba(0, 0, 0, 0.2) !important;
+  background: var(--bg-inset) !important;
   opacity: 1 !important;
   box-shadow: 0 1px 0 var(--border-color);
   /* Fixed height so the side-by-side preview pane below can reliably
@@ -141,12 +141,12 @@
 
 /* Vendor fades the scrollable fullscreen toolbar's edges with hardcoded
    white gradients, which bleed as bright smudges at both ends. Recolor them
-   to the toolbar's own background so they fade correctly on dark. */
+   to the toolbar's own background so they fade correctly in both themes. */
 .editor-toolbar.fullscreen::before {
   background: linear-gradient(
     to right,
     var(--bg-sidebar) 0,
-    rgba(11, 18, 32, 0) 100%
+    var(--fade-out) 100%
   ) !important;
 }
 
@@ -154,7 +154,7 @@
   background: linear-gradient(
     to left,
     var(--bg-sidebar) 0,
-    rgba(11, 18, 32, 0) 100%
+    var(--fade-out) 100%
   ) !important;
 }
 
@@ -176,13 +176,13 @@
 }
 
 .editor-toolbar button:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: var(--surface-hover) !important;
 }
 
 .editor-toolbar button.active,
 .editor-toolbar button:active {
-  background: rgba(54, 137, 207, 0.2) !important;
-  color: #5aa9e0 !important;
+  background: var(--accent-select) !important;
+  color: var(--accent-hover) !important;
 }
 
 /* Preview pane toggle indicator */
@@ -193,7 +193,7 @@
 /* ════════════════ STATUS BAR ════════════════ */
 
 .SimpleMDE-Statusbar {
-  background: rgba(0, 0, 0, 0.15) !important;
+  background: var(--bg-inset) !important;
   border-top: 1px solid var(--border-color) !important;
   padding: 2px 8px !important;
 }
@@ -204,7 +204,7 @@
   line-height: 2.1em;
 }
 
-/* ════════════════ BUILT-IN PREVIEW (DARK OVERRIDES) ════════════════ */
+/* ════════════════ BUILT-IN PREVIEW OVERRIDES ════════════════ */
 
 .editor-preview,
 .editor-preview-side {
@@ -214,8 +214,8 @@
 
 .editor-preview pre,
 .editor-preview-side pre {
-  background: rgba(0, 0, 0, 0.3) !important;
-  color: #c8d6e5;
+  background: var(--bg-code) !important;
+  color: var(--code-text);
 }
 
 .editor-preview table td,
@@ -241,7 +241,7 @@
 
 .editor-toolbar a.active,
 .editor-toolbar a:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: var(--surface-hover) !important;
   border-color: var(--border-color) !important;
 }
 

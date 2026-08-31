@@ -5,6 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PossessApp</title>
 
+  <!-- Theme, resolved before first paint to avoid a flash of the wrong one -->
+  <script>
+    (function () {
+      var theme;
+      try {
+        theme = localStorage.getItem('possess-theme');
+      } catch (err) { /* storage blocked — fall through to the OS preference */ }
+
+      if (!theme) {
+        theme = window.matchMedia('(prefers-color-scheme: light)').matches
+          ? 'light' : 'dark';
+      }
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
+
   <!-- SimpleMDE CSS (local vendor) -->
   <link rel="stylesheet" href="/vendor/simplemde.min.css" />
 
@@ -12,9 +28,13 @@
   <link rel="stylesheet" href="/css/main.css" />
   <link rel="stylesheet" href="/css/sidebar.css" />
   <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/icons.css" />
   <link rel="stylesheet" href="/css/editor.css" />
   <link rel="stylesheet" href="/css/preview.css" />
+  <link rel="stylesheet" href="/css/images.css" />
+  <link rel="stylesheet" href="/css/undo.css" />
   <link rel="stylesheet" href="/css/vault.css" />
+  <link rel="stylesheet" href="/css/scripts.css" />
 
   <!-- JS Libraries (loaded before our scripts) -->
   <script src="/vendor/marked.min.js"></script>
@@ -35,6 +55,18 @@
         <span class="vault-btn-name" id="vault-name">notes</span>
         <span class="vault-btn-hint">Change</span>
       </button>
+      <div class="sidebar-tools">
+        <div class="search-row">
+          <input type="search" id="file-search" spellcheck="false"
+                 placeholder="Search notes..." aria-label="Search notes" />
+        </div>
+        <div class="tool-row">
+          <button class="tool-btn" id="btn-new-note" title="New note">+ Note</button>
+          <button class="tool-btn" id="btn-new-folder" title="New folder">+ Folder</button>
+          <button class="tool-btn" id="btn-scripts" title="Python scripts">Scripts</button>
+        </div>
+      </div>
+
       <nav id="file-tree"></nav>
     </aside>
 
@@ -46,6 +78,7 @@
       <div class="top-bar">
         <span id="current-file-name">No file selected</span>
         <div class="btn-group">
+          <button class="theme-btn" id="btn-theme" title="Switch theme"></button>
           <button class="btn active" id="btn-edit" title="Edit Mode">Edit</button>
           <button class="btn" id="btn-preview" title="Preview Mode">Preview</button>
         </div>
@@ -58,6 +91,45 @@
         <div id="preview-panel" class="markdown-preview"></div>
       </div>
     </section>
+  </div>
+
+  <!-- ── UNDO BAR ── -->
+  <div class="undo-bar" id="undo-bar" role="status" hidden>
+    <span class="undo-message" id="undo-message"></span>
+    <button class="btn active" id="undo-action">Undo</button>
+  </div>
+
+  <!-- ── SIDEBAR CONTEXT MENU ── -->
+  <div class="context-menu" id="context-menu" hidden></div>
+
+  <!-- ── SCRIPTS PANEL ── -->
+  <div class="modal-backdrop" id="scripts-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="scripts-title">
+      <div class="modal-header">
+        <h2 id="scripts-title">Python scripts</h2>
+        <button class="modal-close" id="scripts-close" title="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="scripts-dir" id="scripts-dir"></p>
+        <div class="scripts-list" id="scripts-list"></div>
+
+        <div class="scripts-hooks-row" id="scripts-hooks-row" hidden>
+          <input type="checkbox" id="scripts-hooks" />
+          <label class="scripts-hooks-text" for="scripts-hooks">
+            Run <code>scripts/hooks/</code> after every save
+            <small>Off by default for each vault. Scripts run as you, with your
+            permissions — turn this on only for code you trust.</small>
+          </label>
+        </div>
+
+        <pre class="scripts-output" id="scripts-output"></pre>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn" id="scripts-done">Close</button>
+      </div>
+    </div>
   </div>
 
   <!-- ── VAULT PICKER ── -->
@@ -89,11 +161,18 @@
 
   <!-- Application Scripts -->
   <script src="/js/api.js"></script>
+  <script src="/js/assets.js"></script>
   <script src="/js/sidebar.js"></script>
   <script src="/js/editor.js"></script>
   <script src="/js/resizer.js"></script>
+  <script src="/js/images.js"></script>
+  <script src="/js/paste.js"></script>
   <script src="/js/preview.js"></script>
   <script src="/js/vault.js"></script>
+  <script src="/js/undo.js"></script>
+  <script src="/js/notes.js"></script>
+  <script src="/js/theme.js"></script>
+  <script src="/js/scripts.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

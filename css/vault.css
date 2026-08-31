@@ -7,7 +7,7 @@
   width: calc(100% - 16px);
   margin: 8px;
   padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-faint);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   color: var(--text-main);
@@ -19,7 +19,7 @@
 }
 
 .vault-btn:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--surface-hover);
   border-color: var(--accent);
 }
 
@@ -59,7 +59,7 @@
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -78,7 +78,7 @@
   background: var(--bg-sidebar);
   border: 1px solid var(--border-color);
   border-radius: 10px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 20px 60px var(--shadow-modal);
 }
 
 .modal-header {
@@ -137,7 +137,7 @@
   flex: 1;
   min-width: 0;
   padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--bg-code);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   color: var(--text-main);
@@ -158,7 +158,7 @@
 
 .vault-drive {
   padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-hover-soft);
   border: 1px solid var(--border-color);
   border-radius: 4px;
   color: var(--text-muted);
@@ -179,7 +179,7 @@
   overflow-y: auto;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--bg-inset);
   padding: 4px;
 }
 
@@ -202,7 +202,7 @@
 }
 
 .vault-row:hover {
-  background: rgba(54, 137, 207, 0.18);
+  background: var(--accent-wash-strong);
 }
 
 .vault-row.is-parent {
@@ -217,7 +217,7 @@
 }
 
 .vault-error {
-  color: #e06c75;
+  color: var(--danger);
   font-size: 0.78rem;
   word-break: break-word;
 }

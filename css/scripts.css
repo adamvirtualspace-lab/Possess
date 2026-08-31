@@ -1,0 +1,145 @@
+/* ── Scripts panel ──
+ *
+ * Shares the modal shell from css/vault.css; only the list, the hooks switch
+ * and the output console are defined here.
+ */
+
+.scripts-dir {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.scripts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.script-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--surface-faint);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.script-name {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.script-badge {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-hover);
+  background: var(--accent-wash);
+  border-radius: 20px;
+}
+
+.script-run {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  font-size: 0.76rem;
+}
+
+.script-run:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ── Save-hooks switch ── */
+
+.scripts-hooks-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  background: var(--surface-faint);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.scripts-hooks-row[hidden] { display: none; }
+
+.scripts-hooks-row input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.scripts-hooks-text {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.scripts-hooks-text small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.73rem;
+  color: var(--text-muted);
+}
+
+/* ── Output console ── */
+
+.scripts-output {
+  flex: 1;
+  min-height: 130px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--code-text);
+  background: var(--bg-code);
+  border: 1px solid var(--border-faint);
+  border-radius: 6px;
+}
+
+.scripts-output.has-error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.scripts-output:empty::before {
+  content: 'Output appears here.';
+  color: var(--text-muted);
+}
+
+/* ── Empty state ── */
+
+.scripts-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px 12px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  background: var(--surface-faint);
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+}
+
+.scripts-empty-hint {
+  font-size: 0.76rem;
+}

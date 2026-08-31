@@ -33,6 +33,12 @@
   color: var(--text-muted);
 }
 
+/* Transient paste failures borrow the filename slot rather than opening a
+   dialog over the text you were writing. */
+.top-bar span.is-warning {
+  color: var(--danger);
+}
+
 /* ── Toggle buttons ── */
 
 .btn-group {
@@ -43,7 +49,7 @@
 .btn {
   padding: 7px 14px;
   border: 1px solid var(--border-color);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-faint);
   color: var(--text-main);
   border-radius: 6px;
   cursor: pointer;
@@ -52,7 +58,7 @@
 }
 
 .btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-hover);
 }
 
 .btn.active {
@@ -162,4 +168,55 @@
 body.is-resizing {
   user-select: none;
   cursor: col-resize;
+}
+
+/* ── Theme toggle ──
+ *
+ * The button offers the theme you'd switch *to*, so it shows a sun while the
+ * app is dark. Icons are local SVG masks on currentColor, same approach as
+ * the editor toolbar in css/icons.css.
+ */
+
+:root {
+  --icon-sun: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%208.2a3.8%203.8%200%201%200%200%207.6%203.8%203.8%200%200%200%200-7.6z%22%2F%3E%3Cpath%20d%3D%22M12%202.6v2.2%22%2F%3E%3Cpath%20d%3D%22M12%2019.2v2.2%22%2F%3E%3Cpath%20d%3D%22M4.05%204.05l1.55%201.55%22%2F%3E%3Cpath%20d%3D%22M18.4%2018.4l1.55%201.55%22%2F%3E%3Cpath%20d%3D%22M2.6%2012h2.2%22%2F%3E%3Cpath%20d%3D%22M19.2%2012h2.2%22%2F%3E%3Cpath%20d%3D%22M4.05%2019.95l1.55-1.55%22%2F%3E%3Cpath%20d%3D%22M18.4%205.6l1.55-1.55%22%2F%3E%3C%2Fsvg%3E");
+  --icon-moon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M20.5%2014.2A8.6%208.6%200%200%201%209.8%203.5a8.6%208.6%200%201%200%2010.7%2010.7z%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.theme-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 32px;
+  padding: 0;
+  color: var(--text-muted);
+  background: var(--surface-faint);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.theme-btn:hover {
+  color: var(--text-main);
+  background: var(--surface-hover);
+}
+
+.theme-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.theme-btn::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  background-color: currentColor;
+  -webkit-mask: var(--icon-sun) center / contain no-repeat;
+  mask: var(--icon-sun) center / contain no-repeat;
+}
+
+:root[data-theme="light"] .theme-btn::before {
+  -webkit-mask-image: var(--icon-moon);
+  mask-image: var(--icon-moon);
 }

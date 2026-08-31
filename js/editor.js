@@ -8,11 +8,20 @@ const Editor = {
     this.instance = new SimpleMDE({
       element: document.getElementById('editor-container'),
       spellChecker: false,
+      // Left on, SimpleMDE injects a <link> to FontAwesome on maxcdn — the one
+      // thing that stopped the app working offline. css/icons.css supplies the
+      // toolbar glyphs locally instead.
+      autoDownloadFontAwesome: false,
+      // The vendor's side-by-side pane renders with its own marked call, which
+      // would leave relative image paths pointing at the page URL. Route it
+      // through ours so images resolve there too.
+      previewRender: (text) => Preview.renderHtml(text),
       status: false,
       toolbar: [
         'bold', 'italic', 'heading', '|',
         'quote', 'unordered-list', 'ordered-list', '|',
         'link', 'image', '|',
+        'undo', 'redo', '|',
         'preview', 'side-by-side', 'fullscreen', '|',
         'guide',
       ],
@@ -24,6 +33,8 @@ const Editor = {
     });
 
     this._wireSideBySideFullscreenSync();
+    InlineImages.init();
+    ImagePaste.init();
   },
 
   // SimpleMDE's side-by-side toggle silently forces fullscreen on when it's
@@ -79,6 +90,10 @@ const Editor = {
     this.instance.value(text || '');
     this._dirty = false;
     this._clearSaveTimer();
+
+    // Swapping the whole document invalidates every line widget, and the
+    // change event alone would only rebuild them after the debounce.
+    document.dispatchEvent(new CustomEvent('note-loaded'));
   },
 
   getContent() {
@@ -91,6 +106,15 @@ const Editor = {
 
   clearDirty() {
     this._dirty = false;
+  },
+
+  // Persist now instead of waiting out the idle timer. For an edit whose side
+  // effect already exists on disk — a pasted image is written the moment it's
+  // pasted — the link to it shouldn't lag five seconds behind, or closing the
+  // tab in between leaves an unreferenced file in the images folder.
+  async saveNow() {
+    this._clearSaveTimer();
+    if (this._dirty && this.onSave) await this.onSave(this.getContent());
   },
 
   _scheduleSave() {
