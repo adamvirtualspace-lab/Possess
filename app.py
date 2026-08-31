@@ -1,6 +1,7 @@
 """PossessApp - Markdown Note Taking Backend"""
 
 import json
+import mimetypes
 import os
 import re
 import shutil
@@ -11,7 +12,7 @@ import threading
 import time
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
@@ -730,6 +731,42 @@ def _changed_since(before: dict[str, float], after: dict[str, float]) -> set[str
     changed = set(before) ^ set(after)
     changed |= {p for p in set(before) & set(after) if before[p] != after[p]}
     return changed
+
+
+# Extensions served by /api/asset. Deliberately a allow-list of media types:
+# the endpoint exists so notes can show their own pictures, not to be a general
+# "read any file in the vault" hatch.
+ASSET_SUFFIXES = {
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".bmp", ".svg", ".ico",
+}
+
+
+@app.get("/api/asset/{filepath:path}")
+def get_asset(filepath: str):
+    """Serve an image from the vault so relative paths in notes resolve.
+
+    A note writing ![](images/plan.png) means "next to this note", but the
+    browser resolves that against the page URL. The frontend rewrites such
+    paths to point here, and this reads them back out of the vault.
+    """
+    full = resolve_in_vault(filepath)
+
+    if full.suffix.lower() not in ASSET_SUFFIXES:
+        raise HTTPException(415, f"Not an image: {filepath}")
+    if not full.is_file():
+        raise HTTPException(404, f"Image not found: {filepath}")
+
+    media_type, _ = mimetypes.guess_type(full.name)
+    headers = {"Cache-Control": "no-cache"}
+
+    # An SVG is a document: opened directly in a tab, script inside it would
+    # run on this origin. Rendering happens in <img>, where script never runs,
+    # so lock the file itself down for the direct-navigation case too.
+    if full.suffix.lower() == ".svg":
+        headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'"
+
+    return FileResponse(full, media_type=media_type or "application/octet-stream",
+                        headers=headers)
 
 
 @app.get("/api/status")

@@ -36,7 +36,9 @@ possess/
     ├── sidebar.js              # Sidebar/file tree logic ✅
     ├── editor.js               # SimpleMDE init/control + toggle fixes ✅
     ├── resizer.js              # Draggable sidebar / split dividers ✅
-    ├── preview.js              # Marked rendering ✅
+    ├── preview.js              # Marked rendering + image path rewriting ✅
+    ├── assets.js               # Vault-relative image path resolution ✅
+    ├── images.js               # Inline image widgets in the editor ✅
     ├── theme.js                # Light/dark switching + persistence ✅
     ├── scripts.js              # Python scripts panel (list, run, hooks) ✅
     ├── notes.js                # Create/rename/delete + right-click menu ✅
@@ -58,7 +60,14 @@ possess/
 - Side-by-side and fullscreen are independent toggles (see Vendor Workarounds)
 
 ### 3. Image Preview & Editing
-- Images referenced in markdown render inline within editor view as thumbnails/inline images
+- Images referenced in markdown render inline within the editor as thumbnails,
+  hung under their `![](...)` line as CodeMirror line widgets (`js/images.js`)
+- Relative paths resolve against the note's own folder, `/paths` against the
+  vault root; `/api/asset/{path}` serves the file back (`js/assets.js`)
+- The same rewrite feeds the rendered preview *and* SimpleMDE's side-by-side
+  pane, via `previewRender`, so images resolve in all three views
+- A path that doesn't resolve says so inline instead of leaving a broken glyph
+- External URLs are left untouched
 
 ### 4. Auto-Save & Sync
 - Edit → idle for 5s → auto-save `.md` to disk + display clean preview
@@ -131,6 +140,9 @@ possess/
 | `js/notes.js` | Create/rename/delete + context menu + search box | ✅ DONE |
 | `js/theme.js` | Light/dark toggle, persisted, follows the OS by default | ✅ DONE |
 | `js/scripts.js` | Scripts panel — list, run, output, hooks switch | ✅ DONE |
+| `js/assets.js` | Resolve note-relative image paths to `/api/asset` URLs | ✅ DONE |
+| `js/images.js` | Inline image thumbnails as CodeMirror line widgets | ✅ DONE |
+| `css/images.css` | Inline thumbnail + missing-image styling | ✅ DONE |
 | `css/scripts.css` | Scripts panel styling | ✅ DONE |
 | `js/app.js` | Orchestration (sync, events) | ✅ DONE |
 
@@ -153,6 +165,7 @@ possess/
 | POST | `/api/scripts/run` | Run one script, return `{stdout, stderr, code, seconds, changed}` |
 | POST | `/api/scripts/hooks` | Enable/disable save-hooks for the current vault |
 | POST | `/api/scripts/scaffold` | Create `scripts/` with a README and three examples |
+| GET | `/api/asset/{path}` | Serve an image from the vault (allow-listed extensions) |
 
 ---
 
@@ -207,7 +220,7 @@ F9/F11, and SimpleMDE's internal coupling without hooking each path.
 11. ~~Replace SimpleMDE's CDN FontAwesome with local SVG icons (`css/icons.css`)~~ ✅
 12. ~~Dark/light theme toggle (`js/theme.js`, tokens in `css/main.css`)~~ ✅
 13. ~~Add Python script support: manual runs + save-hooks (`js/scripts.js`)~~ ✅
-14. Inline image rendering in the editor
+14. ~~Inline image rendering in the editor (`js/images.js`, `/api/asset`)~~ ✅
 
 ---
 
