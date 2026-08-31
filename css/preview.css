@@ -83,6 +83,41 @@
   color: var(--text-main);
 }
 
+/* Click rendered content to edit its source line in place. */
+.markdown-preview [data-md-line-index],
+.editor-preview-side [data-md-line-index],
+.markdown-preview [data-md-block-index],
+.editor-preview-side [data-md-block-index] {
+  cursor: text;
+}
+
+.preview-inline-editor {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.7rem;
+  margin: 0.2rem 0 0.45rem;
+  padding: 0.55rem 0.7rem;
+  resize: none;
+  overflow: hidden;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  outline: none;
+  background: var(--bg-inset);
+  color: var(--text-main);
+  font: 14px/1.55 Consolas, "Courier New", monospace;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.preview-code-editor {
+  padding: 16px;
+  background: var(--bg-code);
+  border-color: var(--accent);
+  line-height: 1.65;
+  white-space: pre;
+  overflow: auto;
+}
+
 /* Task lists & checkboxes */
 .markdown-preview ul.contains-task-list {
   list-style: none;
