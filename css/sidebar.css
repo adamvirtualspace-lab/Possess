@@ -114,3 +114,120 @@
   background: rgba(54, 137, 207, 0.18);
   color: #5aa9e0;
 }
+
+/* ── Sidebar tools: search + create buttons ── */
+
+.sidebar-tools {
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.search-row input {
+  width: 100%;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--text-main);
+  background: var(--bg-root);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  outline: none;
+}
+
+.search-row input::placeholder { color: var(--text-muted); }
+
+.search-row input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(54, 137, 207, 0.18);
+}
+
+.tool-row {
+  display: flex;
+  gap: 6px;
+}
+
+.tool-btn {
+  flex: 1;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.18s;
+}
+
+.tool-btn:hover {
+  color: var(--text-main);
+  border-color: var(--accent);
+  background: rgba(54, 137, 207, 0.12);
+}
+
+/* ── Search results ── */
+
+.search-result {
+  padding: 6px 10px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.search-result-name {
+  font-size: 0.84rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result-snippet {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-empty {
+  padding: 14px 12px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ── Right-click menu ── */
+
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 168px;
+  padding: 4px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+}
+
+.context-menu[hidden] { display: none; }
+
+.context-item {
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  color: var(--text-main);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.context-item:hover { background: rgba(54, 137, 207, 0.18); }
+
+.context-item.danger { color: #e06a72; }
+.context-item.danger:hover { background: rgba(224, 106, 114, 0.16); }

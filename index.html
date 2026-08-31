@@ -35,6 +35,17 @@
         <span class="vault-btn-name" id="vault-name">notes</span>
         <span class="vault-btn-hint">Change</span>
       </button>
+      <div class="sidebar-tools">
+        <div class="search-row">
+          <input type="search" id="file-search" spellcheck="false"
+                 placeholder="Search notes..." aria-label="Search notes" />
+        </div>
+        <div class="tool-row">
+          <button class="tool-btn" id="btn-new-note" title="New note">+ Note</button>
+          <button class="tool-btn" id="btn-new-folder" title="New folder">+ Folder</button>
+        </div>
+      </div>
+
       <nav id="file-tree"></nav>
     </aside>
 
@@ -59,6 +70,9 @@
       </div>
     </section>
   </div>
+
+  <!-- ── SIDEBAR CONTEXT MENU ── -->
+  <div class="context-menu" id="context-menu" hidden></div>
 
   <!-- ── VAULT PICKER ── -->
   <div class="modal-backdrop" id="vault-modal" hidden>
@@ -94,6 +108,7 @@
   <script src="/js/resizer.js"></script>
   <script src="/js/preview.js"></script>
   <script src="/js/vault.js"></script>
+  <script src="/js/notes.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

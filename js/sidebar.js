@@ -9,7 +9,36 @@ const Sidebar = {
     const data = await API.listFolders();
     this.base = data.base;
     this.currentFile = null;
-    this.buildTree(data.folders);
+    this.folders = data.folders;
+    this.knownFolders = this._collectFolders(data.folders);
+
+    if (this.searchQuery) {
+      await this.runSearch(this.searchQuery);
+    } else {
+      this.buildTree(data.folders);
+    }
+  },
+
+  // Reload the tree from disk after a create/rename/delete, keeping whatever
+  // file is open selected if it still exists.
+  async refresh(selectPath) {
+    // init() clears the selection, so remember it before rebuilding.
+    const previous = this.currentFile;
+    await this.init();
+    const target = selectPath || previous;
+    if (target && this.filesMap[target]) this.selectFile(target);
+  },
+
+  // /api/folders only reports folders that directly hold notes, but the
+  // "new note in..." target list should offer every folder on the way down.
+  _collectFolders(folders) {
+    const all = new Set();
+    for (const folder of Object.keys(folders)) {
+      if (folder === '.') continue;
+      const parts = folder.split('/');
+      for (let i = 1; i <= parts.length; i++) all.add(parts.slice(0, i).join('/'));
+    }
+    return [...all].sort();
   },
 
   // Indentation is applied inline rather than via nested CSS selectors, since
@@ -42,14 +71,16 @@ const Sidebar = {
     this._renderInto(root, container, 0);
   },
 
-  _node(name) {
-    return { name, children: new Map(), files: [] };
+  _node(name, path = '') {
+    return { name, path, children: new Map(), files: [] };
   },
 
   _ensureNode(root, parts) {
     let node = root;
+    let path = '';
     for (const part of parts) {
-      if (!node.children.has(part)) node.children.set(part, this._node(part));
+      path = path ? `${path}/${part}` : part;
+      if (!node.children.has(part)) node.children.set(part, this._node(part, path));
       node = node.children.get(part);
     }
     return node;
@@ -75,7 +106,13 @@ const Sidebar = {
     const header = document.createElement('div');
     header.className = 'folder-header collapsed';
     header.style.paddingLeft = `${this.INDENT_BASE + depth * this.INDENT_STEP}px`;
-    header.title = node.name;
+    header.title = node.path || node.name;
+    header.dataset.path = node.path;
+    header.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      ContextMenu.openFor(e, 'folder', node.path, node.name);
+    });
 
     const arrow = document.createElement('span');
     arrow.className = 'arrow';
@@ -109,6 +146,12 @@ const Sidebar = {
     item.title = file.path;
     item.style.paddingLeft =
       `${this.INDENT_BASE + depth * this.INDENT_STEP + this.FILE_OFFSET}px`;
+
+    item.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      ContextMenu.openFor(e, 'note', file.path, file.name);
+    });
 
     item.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -145,6 +188,80 @@ const Sidebar = {
       children = children.parentElement?.closest('.folder-children');
     }
     item.scrollIntoView({ block: 'nearest' });
+  },
+
+  // ── Search ──
+
+  searchQuery: '',
+
+  async runSearch(query) {
+    this.searchQuery = query;
+    const container = document.getElementById('file-tree');
+
+    if (!query) {
+      this.buildTree(this.folders || {});
+      if (this.currentFile) this.selectFile(this.currentFile);
+      return;
+    }
+
+    let results;
+    try {
+      ({ results } = await API.search(query));
+    } catch (err) {
+      console.error('Search failed:', err);
+      return;
+    }
+
+    // A stale response from a query the user has already replaced would
+    // overwrite the newer results, so drop it.
+    if (this.searchQuery !== query) return;
+
+    container.innerHTML = '';
+    if (!results.length) {
+      const empty = document.createElement('div');
+      empty.className = 'search-empty';
+      empty.textContent = `No notes matching "${query}"`;
+      container.appendChild(empty);
+      return;
+    }
+
+    for (const result of results) {
+      container.appendChild(this._searchResult(result));
+    }
+    if (this.currentFile) this.selectFile(this.currentFile);
+  },
+
+  _searchResult(result) {
+    const item = document.createElement('div');
+    item.className = 'file-item search-result';
+    item.dataset.path = result.path;
+    item.title = result.path;
+
+    const name = document.createElement('div');
+    name.className = 'search-result-name';
+    name.textContent = result.name;
+    item.appendChild(name);
+
+    if (result.snippet) {
+      const snippet = document.createElement('div');
+      snippet.className = 'search-result-snippet';
+      snippet.textContent = result.snippet;
+      item.appendChild(snippet);
+    }
+
+    item.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      ContextMenu.openFor(e, 'note', result.path, result.name);
+    });
+
+    item.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('file-selected', {
+        detail: { path: result.path },
+      }));
+    });
+
+    return item;
   },
 
   getRelativePath(fullPath) {

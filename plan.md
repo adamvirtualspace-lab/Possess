@@ -37,6 +37,7 @@ possess/
     ├── editor.js               # SimpleMDE init/control + toggle fixes ✅
     ├── resizer.js              # Draggable sidebar / split dividers ✅
     ├── preview.js              # Marked rendering ✅
+    ├── notes.js                # Create/rename/delete + right-click menu ✅
     └── app.js                  # Orchestration (sync, events) ✅
 ```
 
@@ -65,7 +66,17 @@ possess/
 - Dark/light theme toggle
 - Smooth transitions and animations
 
-### 5. Resizable Panes
+### 5. Note Management
+- `+ Note` / `+ Folder` buttons create inside the open note's folder
+- Right-click a note or folder for Open / New here / Rename / Delete
+- Renaming or deleting the open note updates (or clears) the editor so autosave
+  never writes back to a path that moved or is gone
+
+### 6. Search
+- Sidebar search box filters the vault by filename *and* note contents
+- Results show the first matching line as a snippet; Esc clears
+
+### 7. Resizable Panes
 - Drag the sidebar ↔ editor divider and the editor ↔ preview divider
 - Positions held in CSS vars `--sidebar-width` / `--split-pos`, driven by `js/resizer.js`
 - Clamped (sidebar 180–560px, split 15–85%) and persisted to `localStorage`
@@ -94,6 +105,7 @@ possess/
 | `js/editor.js` | SimpleMDE init/control + toggle fixes | ✅ DONE |
 | `js/resizer.js` | Draggable sidebar / split dividers | ✅ DONE |
 | `js/preview.js` | Marked rendering | ✅ DONE |
+| `js/notes.js` | Create/rename/delete + context menu + search box | ✅ DONE |
 | `js/app.js` | Orchestration (sync, events) | ✅ DONE |
 
 ---
@@ -107,6 +119,10 @@ possess/
 | GET | `/api/file/{filepath}` | Get content + mtime of a `.md` file (supports nested paths) |
 | POST | `/api/file/{filepath}` | Save content to a `.md` file `{"content": "..."}` |
 | GET | `/api/status?filepath=...&mtime=...` | Check if file changed on disk (returns `{changed, mtime}`) |
+| POST | `/api/create` | Create a note or folder `{kind, parent, name}` |
+| POST | `/api/rename` | Rename a note or folder in place `{path, name}` |
+| POST | `/api/delete` | Delete a note, or a folder and its contents `{path}` |
+| GET | `/api/search?q=...` | Full-text + filename search, returns `{results:[{path,name,snippet}]}` |
 
 ---
 
@@ -153,6 +169,10 @@ F9/F11, and SimpleMDE's internal coupling without hooking each path.
 7. ~~Fix SimpleMDE side-by-side / fullscreen coupling + dark-theme bleed~~ ✅
 8. ~~Add static-asset cache busting so edits show without a hard refresh~~ ✅
 9. ~~Add draggable sidebar + editor/preview dividers (`js/resizer.js`)~~ ✅
+10. ~~Add note/folder create, rename, delete + vault search (`js/notes.js`)~~ ✅
+11. Vendor FontAwesome locally — SimpleMDE's toolbar icons still come from a CDN
+12. Dark/light theme toggle
+13. Inline image rendering in the editor
 
 ---
 

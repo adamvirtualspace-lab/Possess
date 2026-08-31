@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import shutil
 import string
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
@@ -217,6 +218,130 @@ def save_file(filepath: str, body: dict):
     full.parent.mkdir(parents=True, exist_ok=True)
     full.write_text(body.get("content", ""), encoding="utf-8")
     return {"saved": True, "mtime": full.stat().st_mtime}
+
+
+@app.post("/api/create")
+def create_entry(body: dict):
+    """Create a new note or folder inside the vault.
+
+    The client sends a parent folder plus a name; both are resolved through
+    resolve_in_vault so a crafted name like "../escape" can't leave the vault.
+    """
+    kind = (body.get("kind") or "note").strip()
+    parent = (body.get("parent") or "").strip().strip("/")
+    name = (body.get("name") or "").strip()
+
+    if not name:
+        raise HTTPException(400, "No name provided")
+    if any(sep in name for sep in ("/", "\\")):
+        raise HTTPException(400, "Name cannot contain path separators")
+    if kind == "note" and not name.endswith(".md"):
+        name += ".md"
+
+    rel = f"{parent}/{name}" if parent else name
+    full = resolve_in_vault(rel)
+
+    if full.exists():
+        raise HTTPException(409, f"Already exists: {rel}")
+
+    if kind == "folder":
+        full.mkdir(parents=True)
+    else:
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_text(body.get("content", ""), encoding="utf-8")
+
+    return {"path": rel, "kind": kind}
+
+
+@app.post("/api/rename")
+def rename_entry(body: dict):
+    """Move/rename a note or folder within the vault."""
+    src_rel = (body.get("path") or "").strip().strip("/")
+    name = (body.get("name") or "").strip()
+
+    if not src_rel or not name:
+        raise HTTPException(400, "Both path and name are required")
+    if any(sep in name for sep in ("/", "\\")):
+        raise HTTPException(400, "Name cannot contain path separators")
+
+    src = resolve_in_vault(src_rel)
+    if not src.exists():
+        raise HTTPException(404, f"Not found: {src_rel}")
+
+    if src.is_file() and not name.endswith(".md"):
+        name += ".md"
+
+    parent_rel = src_rel.rsplit("/", 1)[0] if "/" in src_rel else ""
+    dest_rel = f"{parent_rel}/{name}" if parent_rel else name
+    dest = resolve_in_vault(dest_rel)
+
+    # Case-only renames land on the same inode on case-insensitive filesystems,
+    # so only treat a *different* existing path as a collision.
+    if dest.exists() and dest != src:
+        raise HTTPException(409, f"Already exists: {dest_rel}")
+
+    src.rename(dest)
+    return {"path": dest_rel}
+
+
+@app.post("/api/delete")
+def delete_entry(body: dict):
+    """Delete a note, or a folder and everything under it."""
+    rel = (body.get("path") or "").strip().strip("/")
+    if not rel:
+        raise HTTPException(400, "No path provided")
+
+    full = resolve_in_vault(rel)
+    if not full.exists():
+        raise HTTPException(404, f"Not found: {rel}")
+    if full == VAULT.resolve():
+        raise HTTPException(403, "Cannot delete the vault itself")
+
+    if full.is_dir():
+        shutil.rmtree(full)
+    else:
+        full.unlink()
+
+    return {"deleted": rel}
+
+
+@app.get("/api/search")
+def search(q: str, limit: int = 100):
+    """Case-insensitive full-text search across the vault's .md files.
+
+    Returns one entry per matching file with the first matching line as a
+    snippet, so the sidebar can show context without shipping whole notes.
+    """
+    needle = q.strip().lower()
+    if not needle:
+        return {"query": q, "results": []}
+
+    base = VAULT.resolve()
+    results = []
+
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+
+        for fname in sorted(f for f in filenames if f.endswith(".md")):
+            full = Path(dirpath) / fname
+            rel = full.relative_to(base).as_posix()
+            name_hit = needle in fname.lower()
+
+            snippet = ""
+            try:
+                for line in full.read_text(encoding="utf-8", errors="replace").splitlines():
+                    if needle in line.lower():
+                        snippet = line.strip()[:160]
+                        break
+            except OSError:
+                continue
+
+            if snippet or name_hit:
+                results.append({"path": rel, "name": fname, "snippet": snippet})
+            if len(results) >= limit:
+                return {"query": q, "results": results}
+
+    return {"query": q, "results": results}
 
 
 @app.get("/api/status")

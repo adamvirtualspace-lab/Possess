@@ -52,6 +52,34 @@ const API = {
     return res.json();
   },
 
+  async create(kind, parent, name) {
+    return this._post('/api/create', { kind, parent, name }, 'Failed to create');
+  },
+
+  async rename(path, name) {
+    return this._post('/api/rename', { path, name }, 'Failed to rename');
+  },
+
+  async remove(path) {
+    return this._post('/api/delete', { path }, 'Failed to delete');
+  },
+
+  async search(q) {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+    if (!res.ok) throw new Error(`Failed to search: ${res.status}`);
+    return res.json();
+  },
+
+  async _post(url, body, fallback) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await this._detail(res, fallback));
+    return res.json();
+  },
+
   // FastAPI puts the useful message in {"detail": ...}; surface it so the
   // picker can show "Not a folder: X" instead of a bare status code.
   async _detail(res, fallback) {
