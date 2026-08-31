@@ -1,0 +1,83 @@
+/* ── Wiki links ── */
+
+/* Rendered links in the preview and the side-by-side pane. */
+.wikilink {
+  color: var(--accent-hover);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-border);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.wikilink:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* A link to a note that doesn't exist yet. Dashed and muted rather than red:
+   it isn't an error, it's a note you haven't written — clicking creates it. */
+.wikilink.is-missing {
+  color: var(--text-muted);
+  border-bottom: 1px dashed var(--text-muted);
+}
+
+.wikilink.is-missing:hover {
+  color: var(--accent-hover);
+  border-bottom-color: var(--accent-hover);
+}
+
+/* The [[...]] syntax inside the editor, via the CodeMirror overlay. */
+.cm-wikilink {
+  color: var(--accent-hover) !important;
+}
+
+/* ── [[ autocomplete ── */
+
+.link-complete {
+  position: fixed;
+  z-index: 950;
+  min-width: 240px;
+  max-width: 380px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px var(--shadow-menu);
+}
+
+.link-complete[hidden] { display: none; }
+
+.link-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.link-option.is-active,
+.link-option:hover {
+  background: var(--accent-wash-strong);
+}
+
+.link-option-name {
+  flex: 0 1 auto;
+  font-size: 0.83rem;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-option-path {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
