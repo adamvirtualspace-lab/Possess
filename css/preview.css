@@ -32,12 +32,12 @@
 
 .markdown-preview h3 {
   font-size: 1.25rem;
-  color: #cfe0f2;
+  color: var(--text-soft);
 }
 
 .markdown-preview h4 {
   font-size: 1.1rem;
-  color: #b8cce0;
+  color: var(--text-soft-2);
 }
 
 /* ── Paragraphs & text ── */
@@ -49,7 +49,7 @@
 
 .markdown-preview strong {
   font-weight: 600;
-  color: #eaf2fa;
+  color: var(--text-strong);
 }
 
 .markdown-preview em {
@@ -59,14 +59,14 @@
 /* ── Links ── */
 
 .markdown-preview a {
-  color: #5aa9e0;
+  color: var(--accent-hover);
   text-decoration: none;
-  border-bottom: 1px solid rgba(54, 137, 207, 0.3);
+  border-bottom: 1px solid var(--accent-border);
   transition: all 0.15s;
 }
 
 .markdown-preview a:hover {
-  color: #3689cf;
+  color: var(--accent);
   border-bottom-color: var(--accent);
 }
 
@@ -95,7 +95,7 @@
   height: 16px;
   border: 1.5px solid var(--border-color);
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--bg-inset);
   margin-right: 8px;
   vertical-align: middle;
   cursor: pointer;
@@ -125,7 +125,7 @@
   margin: 1em 0;
   padding: 8px 16px;
   border-left: 3px solid var(--accent);
-  background: rgba(54, 137, 207, 0.06);
+  background: var(--accent-quote);
   color: var(--text-muted);
   border-radius: 0 6px 6px 0;
 }
@@ -137,27 +137,27 @@
 /* ── Code ── */
 
 .markdown-preview code {
-  background: rgba(54, 137, 207, 0.12);
+  background: var(--accent-wash);
   padding: 2px 7px;
   border-radius: 4px;
-  color: #9ccbe8;
+  color: var(--code-inline);
   font-size: 0.88em;
   font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
 }
 
 .markdown-preview pre {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--bg-code);
   padding: 16px;
   border-radius: 8px;
   overflow-x: auto;
   margin-bottom: 1.2em;
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-faint);
 }
 
 .markdown-preview pre code {
   background: none;
   padding: 0;
-  color: #c8d6e5;
+  color: var(--code-text);
   font-size: 0.9rem;
   line-height: 1.65;
 }
@@ -172,7 +172,7 @@
 }
 
 .markdown-preview th {
-  background: rgba(54, 137, 207, 0.1);
+  background: var(--accent-table);
   color: var(--accent-hover);
   padding: 10px 14px;
   text-align: left;
@@ -187,7 +187,7 @@
 }
 
 .markdown-preview tr:nth-child(even) td {
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--surface-zebra);
 }
 
 /* ── Horizontal rule ── */
@@ -205,7 +205,7 @@
   max-width: 100%;
   border-radius: 6px;
   margin: 1.2em 0;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 12px var(--shadow-soft);
 }
 
 /* ── Footnotes (optional) ── */

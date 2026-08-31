@@ -17,6 +17,7 @@ const App = {
     await Sidebar.init();
     ContextMenu.init();
     Notes.init();
+    Theme.init();
 
     document.addEventListener('file-selected', (e) => {
       this.loadFile(e.detail.path);

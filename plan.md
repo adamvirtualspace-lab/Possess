@@ -37,6 +37,7 @@ possess/
     ├── editor.js               # SimpleMDE init/control + toggle fixes ✅
     ├── resizer.js              # Draggable sidebar / split dividers ✅
     ├── preview.js              # Marked rendering ✅
+    ├── theme.js                # Light/dark switching + persistence ✅
     ├── notes.js                # Create/rename/delete + right-click menu ✅
     └── app.js                  # Orchestration (sync, events) ✅
 ```
@@ -63,8 +64,13 @@ possess/
 - Poll every 5s: if file on disk is newer than browser → update browser display
 - Prevents conflicts with external changes
 - Beautiful, clean CSS styling built into single HTML file
-- Dark/light theme toggle
 - Smooth transitions and animations
+
+### 4b. Theming
+- Every colour resolves to a token in `css/main.css`; `:root[data-theme="light"]`
+  redefines the same names, so the switch is one attribute on `<html>`
+- Defaults to the OS preference, remembers an explicit choice in `localStorage`
+- Applied by an inline `<head>` script so the first paint is already correct
 
 ### 5. Note Management
 - `+ Note` / `+ Folder` buttons create inside the open note's folder
@@ -107,6 +113,7 @@ possess/
 | `js/resizer.js` | Draggable sidebar / split dividers | ✅ DONE |
 | `js/preview.js` | Marked rendering | ✅ DONE |
 | `js/notes.js` | Create/rename/delete + context menu + search box | ✅ DONE |
+| `js/theme.js` | Light/dark toggle, persisted, follows the OS by default | ✅ DONE |
 | `js/app.js` | Orchestration (sync, events) | ✅ DONE |
 
 ---
@@ -176,7 +183,7 @@ F9/F11, and SimpleMDE's internal coupling without hooking each path.
 9. ~~Add draggable sidebar + editor/preview dividers (`js/resizer.js`)~~ ✅
 10. ~~Add note/folder create, rename, delete + vault search (`js/notes.js`)~~ ✅
 11. ~~Replace SimpleMDE's CDN FontAwesome with local SVG icons (`css/icons.css`)~~ ✅
-12. Dark/light theme toggle
+12. ~~Dark/light theme toggle (`js/theme.js`, tokens in `css/main.css`)~~ ✅
 13. Inline image rendering in the editor
 
 ---

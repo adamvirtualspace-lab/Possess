@@ -1,20 +1,120 @@
-/* ── Main Global Styles (Dark Theme) ── */
+/* ── Main Global Styles ──
+ *
+ * Every colour in the app resolves to one of the tokens below, so the theme
+ * switch is a single attribute on <html> (see js/theme.js) rather than a
+ * parallel set of rules. Dark is the default; :root[data-theme="light"]
+ * redefines the same names. Nothing outside this block should hardcode a
+ * colour — if a component needs a new one, it gets a token here first.
+ */
 
 :root {
-  /* Colors */
+  /* Surfaces */
   --bg-root: #050a11;
   --bg-sidebar: #0b1220;
+  --bg-inset: rgba(0, 0, 0, 0.2);
+  --bg-code: rgba(0, 0, 0, 0.3);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  --surface-hover-soft: rgba(255, 255, 255, 0.04);
+  --surface-faint: rgba(255, 255, 255, 0.03);
+  --surface-zebra: rgba(255, 255, 255, 0.015);
+
+  /* Lines */
   --border-color: #1e2a3e;
+  --border-faint: rgba(255, 255, 255, 0.06);
+
+  /* Text */
   --text-main: #d9e4f0;
   --text-muted: #7a8ba7;
+  --text-strong: #eaf2fa;
+  --text-soft: #cfe0f2;
+  --text-soft-2: #b8cce0;
+  --code-text: #c8d6e5;
+  --code-inline: #9ccbe8;
 
   /* Accent */
   --accent: #3689cf;
   --accent-hover: #5aa9e0;
+  --accent-weak: rgba(54, 137, 207, 0.07);
+  --accent-quote: rgba(54, 137, 207, 0.06);
+  --accent-table: rgba(54, 137, 207, 0.1);
+  --accent-wash: rgba(54, 137, 207, 0.12);
+  --accent-wash-strong: rgba(54, 137, 207, 0.18);
+  --accent-select: rgba(54, 137, 207, 0.2);
+  --accent-border: rgba(54, 137, 207, 0.3);
+  --logo-from: #3689cf;
+  --logo-to: #2d6a9f;
+
+  /* State */
+  --danger: #e06a72;
+  --danger-wash: rgba(224, 106, 114, 0.16);
+  --match-bg: rgba(255, 170, 64, 0.25);
+  --match-text: #ffb040;
+
+  /* Depth */
+  --shadow-menu: rgba(0, 0, 0, 0.45);
+  --shadow-modal: rgba(0, 0, 0, 0.55);
+  --shadow-soft: rgba(0, 0, 0, 0.3);
+  --overlay: rgba(0, 0, 0, 0.6);
+  --scrollbar-hover: rgba(255, 255, 255, 0.15);
+
+  /* A gradient fading to `transparent` fades through black in some engines,
+     so the toolbar's scroll-fade needs the sidebar colour at zero alpha. */
+  --fade-out: rgba(11, 18, 32, 0);
 
   /* Resizable panes (driven by js/resizer.js, persisted to localStorage) */
   --sidebar-width: 260px;
   --split-pos: 50%;
+}
+
+:root[data-theme="light"] {
+  /* Surfaces — a faintly cool paper white rather than #fff, so the sidebar
+     and editor can separate without a heavy border between them. */
+  --bg-root: #fbfcfe;
+  --bg-sidebar: #eef2f7;
+  --bg-inset: #e4eaf2;
+  --bg-code: #edf1f6;
+  --surface-hover: rgba(15, 25, 40, 0.07);
+  --surface-hover-soft: rgba(15, 25, 40, 0.045);
+  --surface-faint: rgba(15, 25, 40, 0.03);
+  --surface-zebra: rgba(15, 25, 40, 0.022);
+
+  --border-color: #d7dfea;
+  --border-faint: rgba(15, 25, 40, 0.09);
+
+  --text-main: #1d2836;
+  --text-muted: #56657a;
+  --text-strong: #0d141d;
+  --text-soft: #26364a;
+  --text-soft-2: #35485f;
+  --code-text: #2c3a4b;
+  --code-inline: #1a5c8f;
+
+  /* The accent darkens on light so it still carries white button text and
+     reads as a link colour against the page. */
+  --accent: #1f6fb2;
+  --accent-hover: #16558c;
+  --accent-weak: rgba(31, 111, 178, 0.07);
+  --accent-quote: rgba(31, 111, 178, 0.06);
+  --accent-table: rgba(31, 111, 178, 0.08);
+  --accent-wash: rgba(31, 111, 178, 0.1);
+  --accent-wash-strong: rgba(31, 111, 178, 0.14);
+  --accent-select: rgba(31, 111, 178, 0.18);
+  --accent-border: rgba(31, 111, 178, 0.35);
+  --logo-from: #2f7fc0;
+  --logo-to: #235f92;
+
+  --danger: #bf343e;
+  --danger-wash: rgba(191, 52, 62, 0.1);
+  --match-bg: rgba(214, 122, 0, 0.18);
+  --match-text: #9a5600;
+
+  --shadow-menu: rgba(20, 32, 50, 0.16);
+  --shadow-modal: rgba(20, 32, 50, 0.22);
+  --shadow-soft: rgba(20, 32, 50, 0.12);
+  --overlay: rgba(28, 38, 52, 0.42);
+  --scrollbar-hover: rgba(15, 25, 40, 0.28);
+
+  --fade-out: rgba(238, 242, 247, 0);
 }
 
 /* Base Reset */
@@ -28,11 +128,11 @@ html, body {
   overflow: hidden;
 }
 
-/* Scrollbar Styling (Dark) */
+/* Scrollbar Styling */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
 
 /* Global Transitions */
 html, body, .sidebar > *, .folder-header, .file-item, .btn, #app > * {
