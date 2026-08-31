@@ -8,6 +8,10 @@ const Editor = {
     this.instance = new SimpleMDE({
       element: document.getElementById('editor-container'),
       spellChecker: false,
+      // Left on, SimpleMDE injects a <link> to FontAwesome on maxcdn — the one
+      // thing that stopped the app working offline. css/icons.css supplies the
+      // toolbar glyphs locally instead.
+      autoDownloadFontAwesome: false,
       status: false,
       toolbar: [
         'bold', 'italic', 'heading', '|',

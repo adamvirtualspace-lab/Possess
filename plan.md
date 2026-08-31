@@ -99,6 +99,7 @@ possess/
 | `css/sidebar.css` | File tree styles | ✅ DONE |
 | `css/layout.css` | Top-bar, buttons, viewport | ✅ DONE |
 | `css/editor.css` | SimpleMDE dark overrides | ✅ DONE |
+| `css/icons.css` | Local SVG toolbar icons — no webfont, no CDN | ✅ DONE |
 | `css/preview.css` | Markdown preview rendering | ✅ DONE |
 | `js/api.js` | Fetch endpoints | ✅ DONE |
 | `js/sidebar.js` | Sidebar/file tree logic | ✅ DONE |
@@ -151,6 +152,10 @@ fullscreen, which caused these:
 | `.editor-preview-side` has `border:1px solid #ddd` | White outline on dark background | Border removed; `.split-resizer` is the visible divider |
 | `.editor-toolbar.fullscreen::before/::after` are white gradients | Bright smudges at both toolbar ends | Recoloured to `--bg-sidebar` (they're scroll-fade hints, so kept not deleted) |
 | `.CodeMirror-sided { width: 50% !important }` | Split ratio not adjustable | Overridden to `var(--split-pos)` |
+| Injects a `<link>` to FontAwesome on maxcdn at startup | App needed the network to show toolbar icons at all | `autoDownloadFontAwesome: false` in `js/editor.js`; `css/icons.css` supplies each `fa-*` glyph as a local inline-SVG mask |
+
+The app now loads zero external resources — verified by driving it with a
+headless browser and asserting no request leaves `localhost`.
 
 Editor-mode state is detected by watching `CodeMirror-sided` / `CodeMirror-fullscreen`
 on the wrapper with a `MutationObserver` (`js/resizer.js`) — that catches the toolbar,
@@ -170,7 +175,7 @@ F9/F11, and SimpleMDE's internal coupling without hooking each path.
 8. ~~Add static-asset cache busting so edits show without a hard refresh~~ ✅
 9. ~~Add draggable sidebar + editor/preview dividers (`js/resizer.js`)~~ ✅
 10. ~~Add note/folder create, rename, delete + vault search (`js/notes.js`)~~ ✅
-11. Vendor FontAwesome locally — SimpleMDE's toolbar icons still come from a CDN
+11. ~~Replace SimpleMDE's CDN FontAwesome with local SVG icons (`css/icons.css`)~~ ✅
 12. Dark/light theme toggle
 13. Inline image rendering in the editor
 
