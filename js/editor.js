@@ -21,6 +21,7 @@ const Editor = {
         'bold', 'italic', 'heading', '|',
         'quote', 'unordered-list', 'ordered-list', '|',
         'link', 'image', '|',
+        'undo', 'redo', '|',
         'preview', 'side-by-side', 'fullscreen', '|',
         'guide',
       ],

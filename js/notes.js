@@ -62,13 +62,24 @@ const Notes = {
 
     try {
       const result = await API.rename(path, name.trim());
-      document.dispatchEvent(new CustomEvent('entry-renamed', {
-        detail: { kind, from: path, to: result.path },
-      }));
-      await Sidebar.refresh(kind === 'note' ? result.path : null);
+      await this._afterRename(kind, path, result.path);
+
+      // Renaming back is just another rename, so the undo is the same call
+      // with the original name.
+      UndoBar.offer(`Renamed to ${result.path}`, async () => {
+        const back = await API.rename(result.path, currentName);
+        await this._afterRename(kind, result.path, back.path);
+      });
     } catch (err) {
       alert(err.message);
     }
+  },
+
+  async _afterRename(kind, from, to) {
+    document.dispatchEvent(new CustomEvent('entry-renamed', {
+      detail: { kind, from, to },
+    }));
+    await Sidebar.refresh(kind === 'note' ? to : null);
   },
 
   async remove(kind, path) {
@@ -77,10 +88,26 @@ const Notes = {
       : `Delete note "${path}"?`;
     if (!confirm(warning)) return;
 
+    const wasOpen = App.state.currentFile;
+
     try {
-      await API.remove(path);
+      const { token } = await API.remove(path);
       document.dispatchEvent(new CustomEvent('entry-deleted', { detail: { kind, path } }));
       await Sidebar.refresh();
+
+      UndoBar.offer(`Deleted ${path}`, async () => {
+        await API.restore(token);
+        await Sidebar.refresh();
+
+        // Reopen whatever was on screen when it was deleted, so undo puts the
+        // editor back as well as the file.
+        const reopen = kind === 'note' ? path : wasOpen;
+        if (reopen && (kind === 'note' || wasOpen?.startsWith(`${path}/`))) {
+          document.dispatchEvent(new CustomEvent('file-selected', {
+            detail: { path: reopen },
+          }));
+        }
+      });
     } catch (err) {
       alert(err.message);
     }

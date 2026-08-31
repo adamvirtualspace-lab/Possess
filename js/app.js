@@ -16,6 +16,7 @@ const App = {
     await Vault.init();
     await Sidebar.init();
     ContextMenu.init();
+    UndoBar.init();
     Notes.init();
     Theme.init();
     Scripts.init();

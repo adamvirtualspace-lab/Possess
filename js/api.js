@@ -64,6 +64,10 @@ const API = {
     return this._post('/api/delete', { path }, 'Failed to delete');
   },
 
+  async restore(token) {
+    return this._post('/api/restore', { token }, 'Failed to restore');
+  },
+
   async search(q) {
     const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
     if (!res.ok) throw new Error(`Failed to search: ${res.status}`);

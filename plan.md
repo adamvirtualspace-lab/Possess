@@ -40,6 +40,7 @@ possess/
     ├── assets.js               # Vault-relative image path resolution ✅
     ├── images.js               # Inline image widgets in the editor ✅
     ├── paste.js                # Paste an image → save beside note + embed ✅
+    ├── undo.js                 # Undo bar for delete/rename ✅
     ├── theme.js                # Light/dark switching + persistence ✅
     ├── scripts.js              # Python scripts panel (list, run, hooks) ✅
     ├── notes.js                # Create/rename/delete + right-click menu ✅
@@ -94,6 +95,18 @@ possess/
 - Right-click a note or folder for Open / New here / Rename / Delete
 - Renaming or deleting the open note updates (or clears) the editor so autosave
   never writes back to a path that moved or is gone
+
+### 5b. Undo
+- Text editing uses CodeMirror's own history (Ctrl/Cmd+Z), now also exposed as
+  undo/redo toolbar buttons
+- File operations get their own undo: deleting a note or folder **moves it to
+  `<vault>/.trash/<token>/`** with a manifest of where it came from, rather
+  than unlinking it, and offers "Undo" for 12s (`js/undo.js`)
+- Undoing a delete restores the file *and* reopens it if it was on screen;
+  undoing a rename renames it back
+- `.trash` is dot-prefixed, so the existing sidebar walk already skips it
+- Restore refuses to overwrite: if something new occupies the old path, it
+  returns 409 rather than clobbering it
 
 ### 6. Python Scripts
 - Plain `.py` files in `<vault>/scripts/`, run by the Scripts panel
@@ -150,6 +163,8 @@ possess/
 | `js/assets.js` | Resolve note-relative image paths to `/api/asset` URLs | ✅ DONE |
 | `js/images.js` | Inline image thumbnails as CodeMirror line widgets | ✅ DONE |
 | `js/paste.js` | Paste-to-embed: upload, file beside the note, insert link | ✅ DONE |
+| `js/undo.js` | Undo bar for destructive file operations | ✅ DONE |
+| `css/undo.css` | Undo bar styling | ✅ DONE |
 | `css/images.css` | Inline thumbnail + missing-image styling | ✅ DONE |
 | `css/scripts.css` | Scripts panel styling | ✅ DONE |
 | `js/app.js` | Orchestration (sync, events) | ✅ DONE |
@@ -167,7 +182,8 @@ possess/
 | GET | `/api/status?filepath=...&mtime=...` | Check if file changed on disk (returns `{changed, mtime}`) |
 | POST | `/api/create` | Create a note or folder `{kind, parent, name}` |
 | POST | `/api/rename` | Rename a note or folder in place `{path, name}` |
-| POST | `/api/delete` | Delete a note, or a folder and its contents `{path}` |
+| POST | `/api/delete` | Move a note or folder to `.trash/`, returns an undo `token` |
+| POST | `/api/restore` | Put a trashed entry back `{token}` |
 | GET | `/api/search?q=...` | Full-text + filename search, returns `{results:[{path,name,snippet}]}` |
 | GET | `/api/scripts` | List `<vault>/scripts/*.py` + hook state |
 | POST | `/api/scripts/run` | Run one script, return `{stdout, stderr, code, seconds, changed}` |
@@ -231,6 +247,7 @@ F9/F11, and SimpleMDE's internal coupling without hooking each path.
 13. ~~Add Python script support: manual runs + save-hooks (`js/scripts.js`)~~ ✅
 14. ~~Inline image rendering in the editor (`js/images.js`, `/api/asset`)~~ ✅
 15. ~~Paste an image into a note, filed beside it and auto-embedded (`js/paste.js`)~~ ✅
+16. ~~Undo for deletes and renames, backed by a vault trash (`js/undo.js`)~~ ✅
 
 ---
 

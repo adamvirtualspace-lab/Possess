@@ -10,6 +10,7 @@ import shutil
 import string
 import subprocess
 import sys
+import uuid
 import threading
 import time
 from datetime import datetime
@@ -320,25 +321,90 @@ def rename_entry(body: dict):
     return {"path": dest_rel}
 
 
+# Deletes move here instead of being unlinked, so "delete folder" is a
+# recoverable action rather than a permanent one. Dot-prefixed, so the sidebar
+# walk already skips it. Each deletion gets its own folder holding the item
+# plus a manifest saying where it came from.
+TRASH_DIRNAME = ".trash"
+TRASH_MANIFEST = "manifest.json"
+
+
+def _trash_dir(vault: Path) -> Path:
+    return vault / TRASH_DIRNAME
+
+
 @app.post("/api/delete")
 def delete_entry(body: dict):
-    """Delete a note, or a folder and everything under it."""
+    """Move a note, or a folder and its contents, into the vault's trash.
+
+    Returns a token the client can hand to /api/restore, which is what makes
+    an "Undo" offer possible — rmtree on a folder of notes is not something
+    to do on a single confirm click.
+    """
     rel = (body.get("path") or "").strip().strip("/")
     if not rel:
         raise HTTPException(400, "No path provided")
 
+    vault = VAULT.resolve()
     full = resolve_in_vault(rel)
+
     if not full.exists():
         raise HTTPException(404, f"Not found: {rel}")
-    if full == VAULT.resolve():
+    if full == vault:
         raise HTTPException(403, "Cannot delete the vault itself")
+    if full == _trash_dir(vault) or _trash_dir(vault) in full.parents:
+        raise HTTPException(403, "Cannot delete the trash through this endpoint")
 
-    if full.is_dir():
-        shutil.rmtree(full)
-    else:
-        full.unlink()
+    token = f"{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:8]}"
+    holding = _trash_dir(vault) / token
+    holding.mkdir(parents=True)
 
-    return {"deleted": rel}
+    kind = "folder" if full.is_dir() else "note"
+    shutil.move(str(full), str(holding / full.name))
+    (holding / TRASH_MANIFEST).write_text(
+        json.dumps({"path": rel, "name": full.name, "kind": kind,
+                    "deleted_at": datetime.now().isoformat(timespec="seconds")},
+                   indent=2),
+        encoding="utf-8",
+    )
+
+    return {"deleted": rel, "kind": kind, "token": token}
+
+
+@app.post("/api/restore")
+def restore_entry(body: dict):
+    """Put a trashed note or folder back where it came from."""
+    token = (body.get("token") or "").strip()
+    if not token:
+        raise HTTPException(400, "No token provided")
+
+    vault = VAULT.resolve()
+    holding = (_trash_dir(vault) / token).resolve()
+
+    # The token comes from the client, so it gets the same treatment as any
+    # other path: proven to sit inside the trash before anything is moved.
+    if not holding.is_relative_to(_trash_dir(vault)) or not holding.is_dir():
+        raise HTTPException(404, f"Nothing to restore for {token}")
+
+    try:
+        manifest = json.loads((holding / TRASH_MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise HTTPException(500, "That deletion's manifest is unreadable")
+
+    rel = manifest["path"]
+    target = resolve_in_vault(rel)
+    if target.exists():
+        raise HTTPException(409, f"Something is already at {rel}")
+
+    source = holding / manifest["name"]
+    if not source.exists():
+        raise HTTPException(404, f"Nothing to restore for {token}")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(source), str(target))
+    shutil.rmtree(holding, ignore_errors=True)
+
+    return {"restored": rel, "kind": manifest.get("kind", "note")}
 
 
 @app.get("/api/search")

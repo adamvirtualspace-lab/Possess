@@ -32,6 +32,7 @@
   <link rel="stylesheet" href="/css/editor.css" />
   <link rel="stylesheet" href="/css/preview.css" />
   <link rel="stylesheet" href="/css/images.css" />
+  <link rel="stylesheet" href="/css/undo.css" />
   <link rel="stylesheet" href="/css/vault.css" />
   <link rel="stylesheet" href="/css/scripts.css" />
 
@@ -90,6 +91,12 @@
         <div id="preview-panel" class="markdown-preview"></div>
       </div>
     </section>
+  </div>
+
+  <!-- ── UNDO BAR ── -->
+  <div class="undo-bar" id="undo-bar" role="status" hidden>
+    <span class="undo-message" id="undo-message"></span>
+    <button class="btn active" id="undo-action">Undo</button>
   </div>
 
   <!-- ── SIDEBAR CONTEXT MENU ── -->
@@ -162,6 +169,7 @@
   <script src="/js/paste.js"></script>
   <script src="/js/preview.js"></script>
   <script src="/js/vault.js"></script>
+  <script src="/js/undo.js"></script>
   <script src="/js/notes.js"></script>
   <script src="/js/theme.js"></script>
   <script src="/js/scripts.js"></script>
