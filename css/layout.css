@@ -89,6 +89,10 @@
 #preview-panel {
   flex: 1;
   overflow: auto;
+  /* Inline editors can become a few pixels taller than their rendered line.
+     Reserve the vertical scrollbar's width even before it is needed so the
+     centered preview never narrows and shifts horizontally on focus. */
+  scrollbar-gutter: stable;
   padding: 24px;
 }
 
