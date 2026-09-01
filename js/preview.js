@@ -458,7 +458,15 @@ const Preview = {
 
   hide() {
     this.panel.style.display = 'none';
-    const cm = Editor.instance.codemirror.getWrapperElement();
-    if (cm) cm.style.display = '';
+    const editor = Editor.instance.codemirror;
+    const cm = editor.getWrapperElement();
+    if (cm) {
+      cm.style.display = '';
+      // A note can be loaded through a wiki-link while the editor is hidden
+      // behind Preview. CodeMirror updates its document then, but cannot
+      // measure or redraw its line viewport at display:none. Refresh only
+      // after it is visible so Edit never reveals the previous note's DOM.
+      requestAnimationFrame(() => editor.refresh());
+    }
   },
 };
