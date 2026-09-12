@@ -96,21 +96,21 @@ mod inner {
     // One embed per served directory rather than one rooted at the project, so
     // the build never walks target/ and nothing outside these can be reached.
     #[derive(Embed)]
-    #[folder = "css"]
+    #[folder = "../../css"]
     struct Css;
 
     #[derive(Embed)]
-    #[folder = "js"]
+    #[folder = "../../js"]
     struct Js;
 
     // The vendored editor's full source tree is not served; only the built
     // bundles beside it are, which index.html is what actually loads.
     #[derive(Embed)]
-    #[folder = "vendor"]
+    #[folder = "../../vendor"]
     #[exclude = "simplemde-markdown-editor-fullrepo/*"]
     struct Vendor;
 
-    const INDEX: &[u8] = include_bytes!("../index.html");
+    const INDEX: &[u8] = include_bytes!("../../../index.html");
 
     pub fn read(path: &str) -> Option<Vec<u8>> {
         let (prefix, rest) = super::split_served(path)?;

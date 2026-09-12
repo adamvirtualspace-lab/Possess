@@ -13,8 +13,8 @@ use axum::response::Html;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use error::{AppError, AppResult};
+use possess_common::{BrowseResponse, DirEntry, SetVaultRequest, VaultInfo};
 use serde::Deserialize;
-use serde_json::{json, Value};
 use tower_http::cors::{Any, CorsLayer};
 use vault::AppState;
 
@@ -43,13 +43,13 @@ async fn index() -> AppResult<Html<String>> {
 
 // ── Vault selection ──
 
-async fn get_vault(State(state): State<AppState>) -> Json<Value> {
+async fn get_vault(State(state): State<AppState>) -> Json<VaultInfo> {
     let path = state.vault();
-    Json(json!({
-        "path": path.display().to_string(),
-        "name": vault_display_name(&path),
-        "exists": path.is_dir(),
-    }))
+    Json(VaultInfo {
+        name: vault_display_name(&path),
+        exists: Some(path.is_dir()),
+        path: path.display().to_string(),
+    })
 }
 
 /// The folder's own name, falling back to the whole path for a filesystem root.
@@ -60,15 +60,10 @@ fn vault_display_name(path: &std::path::Path) -> String {
     }
 }
 
-#[derive(Deserialize)]
-struct VaultBody {
-    path: Option<String>,
-}
-
 async fn set_vault(
     State(state): State<AppState>,
-    Json(body): Json<VaultBody>,
-) -> AppResult<Json<Value>> {
+    Json(body): Json<SetVaultRequest>,
+) -> AppResult<Json<VaultInfo>> {
     let raw = body.path.unwrap_or_default().trim().to_string();
     if raw.is_empty() {
         return Err(AppError::bad_request("No folder provided"));
@@ -84,10 +79,13 @@ async fn set_vault(
     vault::save_vault(&resolved);
 
     println!("[PossessApp] Vault changed to: {}", resolved.display());
-    Ok(Json(json!({
-        "path": resolved.display().to_string(),
-        "name": vault_display_name(&resolved),
-    })))
+    Ok(Json(VaultInfo {
+        name: vault_display_name(&resolved),
+        // Absent rather than null: POST answers about a folder it has just
+        // confirmed is there, which is what the Python version reported too.
+        exists: None,
+        path: resolved.display().to_string(),
+    }))
 }
 
 #[derive(Deserialize)]
@@ -99,7 +97,7 @@ struct BrowseQuery {
 async fn browse(
     State(state): State<AppState>,
     Query(params): Query<BrowseQuery>,
-) -> AppResult<Json<Value>> {
+) -> AppResult<Json<BrowseResponse>> {
     let target = match params.path.as_deref().filter(|p| !p.is_empty()) {
         Some(path) => vault::canonical(&notes::expand_user(path)),
         None => state.vault_resolved(),
@@ -117,7 +115,7 @@ async fn browse(
         }
     })?;
 
-    let mut dirs: Vec<(String, Value)> = Vec::new();
+    let mut dirs: Vec<(String, DirEntry)> = Vec::new();
     for entry in entries.filter_map(Result::ok) {
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
@@ -133,22 +131,20 @@ async fn browse(
             _ => continue,
         }
         let path = entry.path().display().to_string();
-        dirs.push((name.to_lowercase(), json!({ "name": name, "path": path })));
+        dirs.push((name.to_lowercase(), DirEntry { name, path }));
     }
     dirs.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let parent = target
-        .parent()
-        .filter(|p| *p != target.as_path())
-        .map(|p| Value::String(p.display().to_string()))
-        .unwrap_or(Value::Null);
-
-    Ok(Json(json!({
-        "path": target.display().to_string(),
-        "parent": parent,
-        "dirs": dirs.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
-        "drives": vault::windows_drives(),
-    })))
+    Ok(Json(BrowseResponse {
+        // Null at a filesystem root: there is nowhere further up to go.
+        parent: target
+            .parent()
+            .filter(|p| *p != target.as_path())
+            .map(|p| p.display().to_string()),
+        path: target.display().to_string(),
+        dirs: dirs.into_iter().map(|(_, entry)| entry).collect(),
+        drives: vault::windows_drives(),
+    }))
 }
 
 // ── Static files ──

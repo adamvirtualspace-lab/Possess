@@ -567,6 +567,7 @@ dependencies = [
  "dunce",
  "fs_extra",
  "mime_guess",
+ "possess-common",
  "regex",
  "rust-embed",
  "serde",
@@ -576,6 +577,14 @@ dependencies = [
  "tower-http",
  "uuid",
  "walkdir",
+]
+
+[[package]]
+name = "possess-common"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

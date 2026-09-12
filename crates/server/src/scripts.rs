@@ -12,8 +12,10 @@ use crate::notes::{mtime_secs, trim_rel, walk_notes};
 use crate::vault::{self, AppState};
 use axum::extract::State;
 use axum::Json;
-use serde::Deserialize;
-use serde_json::{json, Value};
+use possess_common::{
+    RunScriptRequest, RunScriptResponse, ScaffoldResponse, ScriptInfo, ScriptsResponse,
+    SetHooksRequest, SetHooksResponse,
+};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -26,12 +28,12 @@ pub const HOOK_TIMEOUT: u64 = 10;
 /// Worked examples written into a new scripts/ folder on request. They are
 /// ordinary files once created — edit or delete them freely.
 const EXAMPLE_SCRIPTS: &[(&str, &str)] = &[
-    ("README.md", include_str!("../scripts_examples/README.md")),
-    ("vault_stats.py", include_str!("../scripts_examples/vault_stats.py")),
-    ("find_todos.py", include_str!("../scripts_examples/find_todos.py")),
+    ("README.md", include_str!("../../../scripts_examples/README.md")),
+    ("vault_stats.py", include_str!("../../../scripts_examples/vault_stats.py")),
+    ("find_todos.py", include_str!("../../../scripts_examples/find_todos.py")),
     (
         "hooks/sync_checkboxes.py",
-        include_str!("../scripts_examples/hooks/sync_checkboxes.py"),
+        include_str!("../../../scripts_examples/hooks/sync_checkboxes.py"),
     ),
 ];
 
@@ -74,7 +76,7 @@ pub fn scripts_dir(vault: &Path) -> PathBuf {
 }
 
 /// Every runnable script in the vault, as (manual list, hook paths).
-pub fn list_scripts_in(vault: &Path) -> (Vec<Value>, Vec<PathBuf>) {
+pub fn list_scripts_in(vault: &Path) -> (Vec<ScriptInfo>, Vec<PathBuf>) {
     let root = scripts_dir(vault);
     let (mut listed, mut hooks) = (Vec::new(), Vec::new());
 
@@ -84,14 +86,14 @@ pub fn list_scripts_in(vault: &Path) -> (Vec<Value>, Vec<PathBuf>) {
 
     for path in sorted_py_files(&root) {
         let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-        listed.push(json!({ "name": name, "kind": "manual" }));
+        listed.push(ScriptInfo { name, kind: "manual".into() });
     }
 
     let hooks_root = root.join(HOOKS_DIRNAME);
     if hooks_root.is_dir() {
         for path in sorted_py_files(&hooks_root) {
             let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-            listed.push(json!({ "name": format!("{HOOKS_DIRNAME}/{name}"), "kind": "hook" }));
+            listed.push(ScriptInfo { name: format!("{HOOKS_DIRNAME}/{name}"), kind: "hook".into() });
             hooks.push(path);
         }
     }
@@ -132,7 +134,7 @@ fn resolve_script(vault: &Path, name: &str) -> AppResult<PathBuf> {
 }
 
 /// Run one script and capture what it did.
-async fn run_one(path: &Path, vault: &Path, note: Option<&str>, timeout: u64) -> Value {
+async fn run_one(path: &Path, vault: &Path, note: Option<&str>, timeout: u64) -> RunScriptResponse {
     let mut command = tokio::process::Command::new(python_executable());
     command
         .arg(path)
@@ -166,13 +168,14 @@ async fn run_one(path: &Path, vault: &Path, note: Option<&str>, timeout: u64) ->
             Ok(Err(err)) => (String::new(), format!("Could not start script: {err}"), -1),
         };
 
-    json!({
-        "script": name,
-        "code": code,
-        "stdout": tail(&stdout, 20000),
-        "stderr": tail(&stderr, 20000),
-        "seconds": (started.elapsed().as_secs_f64() * 100.0).round() / 100.0,
-    })
+    RunScriptResponse {
+        script: name,
+        code,
+        stdout: tail(&stdout, 20000),
+        stderr: tail(&stderr, 20000),
+        seconds: (started.elapsed().as_secs_f64() * 100.0).round() / 100.0,
+        changed: Vec::new(),
+    }
 }
 
 /// The last `limit` bytes, on a character boundary.
@@ -211,18 +214,19 @@ pub async fn run_save_hooks(state: &AppState, note: &str) {
 
     for hook in hooks {
         let result = run_one(&hook, &vault_path, Some(note), HOOK_TIMEOUT).await;
-        let name = result["script"].as_str().unwrap_or("?");
+        let name = &result.script;
 
-        if result["code"].as_i64() != Some(0) {
-            let err = result["stderr"].as_str().unwrap_or("").trim().to_string();
+        if result.code != 0 {
+            let err = result.stderr.trim();
             eprintln!(
                 "[PossessApp] hook {name} failed ({}): {}",
-                result["code"], truncate(&err, 400)
+                result.code,
+                truncate(err, 400)
             );
         } else {
-            let out = result["stdout"].as_str().unwrap_or("").trim().to_string();
+            let out = result.stdout.trim();
             if !out.is_empty() {
-                println!("[PossessApp] hook {name}: {}", truncate(&out, 400));
+                println!("[PossessApp] hook {name}: {}", truncate(out, 400));
             }
         }
     }
@@ -235,29 +239,23 @@ fn truncate(text: &str, limit: usize) -> &str {
     }
 }
 
-pub async fn list_scripts(State(state): State<AppState>) -> AppResult<Json<Value>> {
+pub async fn list_scripts(State(state): State<AppState>) -> AppResult<Json<ScriptsResponse>> {
     let vault_path = state.vault_resolved();
-    let (listed, _) = list_scripts_in(&vault_path);
+    let (scripts, _) = list_scripts_in(&vault_path);
     let dir = scripts_dir(&vault_path);
 
-    Ok(Json(json!({
-        "scripts": listed,
-        "dir": dir.display().to_string(),
-        "exists": dir.is_dir(),
-        "hooks_enabled": vault::hooks_enabled(&vault_path),
-    })))
-}
-
-#[derive(Deserialize)]
-pub struct RunBody {
-    name: Option<String>,
-    note: Option<String>,
+    Ok(Json(ScriptsResponse {
+        scripts,
+        exists: dir.is_dir(),
+        dir: dir.display().to_string(),
+        hooks_enabled: vault::hooks_enabled(&vault_path),
+    }))
 }
 
 pub async fn run_script(
     State(state): State<AppState>,
-    Json(body): Json<RunBody>,
-) -> AppResult<Json<Value>> {
+    Json(body): Json<RunScriptRequest>,
+) -> AppResult<Json<RunScriptResponse>> {
     let name = trim_rel(body.name.as_deref().unwrap_or(""));
     if name.is_empty() {
         return Err(AppError::bad_request("No script named"));
@@ -272,20 +270,14 @@ pub async fn run_script(
     let mut result = run_one(&script, &vault_path, body.note.as_deref(), SCRIPT_TIMEOUT).await;
     let after = vault_snapshot(&vault_path);
 
-    result["changed"] = json!(changed_since(&before, &after));
+    result.changed = changed_since(&before, &after);
     Ok(Json(result))
-}
-
-#[derive(Deserialize)]
-pub struct HooksBody {
-    #[serde(default)]
-    enabled: bool,
 }
 
 pub async fn set_hooks(
     State(state): State<AppState>,
-    Json(body): Json<HooksBody>,
-) -> AppResult<Json<Value>> {
+    Json(body): Json<SetHooksRequest>,
+) -> AppResult<Json<SetHooksResponse>> {
     let vault_path = state.vault_resolved();
     vault::set_hooks_enabled(&vault_path, body.enabled);
 
@@ -294,11 +286,11 @@ pub async fn set_hooks(
         if body.enabled { "enabled" } else { "disabled" },
         vault_path.display()
     );
-    Ok(Json(json!({ "hooks_enabled": body.enabled })))
+    Ok(Json(SetHooksResponse { hooks_enabled: body.enabled }))
 }
 
 /// Create scripts/ with worked examples, on explicit request only.
-pub async fn scaffold_scripts(State(state): State<AppState>) -> AppResult<Json<Value>> {
+pub async fn scaffold_scripts(State(state): State<AppState>) -> AppResult<Json<ScaffoldResponse>> {
     let vault_path = state.vault_resolved();
     let root = scripts_dir(&vault_path);
     std::fs::create_dir_all(root.join(HOOKS_DIRNAME))?;
@@ -310,10 +302,10 @@ pub async fn scaffold_scripts(State(state): State<AppState>) -> AppResult<Json<V
             continue;
         }
         std::fs::write(&target, source)?;
-        written.push(*rel);
+        written.push(rel.to_string());
     }
 
-    Ok(Json(json!({ "created": written, "dir": root.display().to_string() })))
+    Ok(Json(ScaffoldResponse { created: written, dir: root.display().to_string() }))
 }
 
 fn vault_snapshot(vault: &Path) -> HashMap<String, f64> {

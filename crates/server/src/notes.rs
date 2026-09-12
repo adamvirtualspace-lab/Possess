@@ -6,8 +6,13 @@ use crate::vault::{self, AppState};
 use axum::extract::{Path as UrlPath, Query, State};
 use axum::Json;
 use chrono::Local;
+use possess_common::{
+    CreateRequest, CreateResponse, DeleteRequest, DeleteResponse, FileResponse, FoldersResponse,
+    NoteEntry, RenameRequest, RenameResponse, RestoreRequest, RestoreResponse, SaveFileRequest,
+    SaveFileResponse, StatusResponse, TrashManifest,
+};
 use serde::Deserialize;
-use serde_json::{json, Map, Value};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// Deletes move here instead of being unlinked, so "delete folder" is a
@@ -84,7 +89,7 @@ pub struct RootQuery {
 pub async fn list_folders(
     State(state): State<AppState>,
     Query(params): Query<RootQuery>,
-) -> AppResult<Json<Value>> {
+) -> AppResult<Json<FoldersResponse>> {
     let base = match params.root.as_deref().filter(|r| !r.is_empty()) {
         Some(root) => vault::canonical(&expand_user(root)),
         None => state.vault_resolved(),
@@ -100,7 +105,7 @@ pub async fn list_folders(
     // Keyed by the folder's path relative to the base, listing only folders
     // that directly hold .md files. The client splits those keys to rebuild the
     // hierarchy, so intermediate folders need no entry of their own.
-    let mut folders: Map<String, Value> = Map::new();
+    let mut folders: BTreeMap<String, Vec<NoteEntry>> = BTreeMap::new();
 
     for entry in walk_notes(&base) {
         let full = entry.path();
@@ -120,52 +125,41 @@ pub async fn list_folders(
         let name = entry.file_name().to_string_lossy().to_string();
         folders
             .entry(rel)
-            .or_insert_with(|| Value::Array(Vec::new()))
-            .as_array_mut()
-            .expect("folder entry is an array")
-            .push(json!([name, full.display().to_string()]));
+            .or_default()
+            .push(NoteEntry(name, full.display().to_string()));
     }
 
     // os.walk yielded filenames sorted per directory; walkdir does not promise
     // an order, so sort each folder's notes to keep the tree stable.
     for files in folders.values_mut() {
-        if let Some(list) = files.as_array_mut() {
-            list.sort_by(|a, b| a[0].as_str().unwrap_or("").cmp(b[0].as_str().unwrap_or("")));
-        }
+        files.sort_by(|a, b| a.0.cmp(&b.0));
     }
 
-    Ok(Json(json!({ "base": base.display().to_string(), "folders": folders })))
+    Ok(Json(FoldersResponse { base: base.display().to_string(), folders }))
 }
 
 pub async fn get_file(
     State(state): State<AppState>,
     UrlPath(filepath): UrlPath<String>,
-) -> AppResult<Json<Value>> {
+) -> AppResult<Json<FileResponse>> {
     let full = state.resolve(&filepath)?;
 
     if !full.is_file() {
         return Err(AppError::not_found(format!("File not found: {filepath}")));
     }
 
-    let content = std::fs::read_to_string(&full)?;
-    Ok(Json(json!({
-        "filename": filepath,
-        "content": content,
-        "mtime": mtime_secs(&full),
-    })))
-}
-
-#[derive(Deserialize)]
-pub struct SaveBody {
-    #[serde(default)]
-    content: String,
+    Ok(Json(FileResponse {
+        content: std::fs::read_to_string(&full)?,
+        mtime: mtime_secs(&full),
+        filename: filepath,
+    }))
 }
 
 pub async fn save_file(
     State(state): State<AppState>,
     UrlPath(filepath): UrlPath<String>,
-    Json(body): Json<SaveBody>,
-) -> AppResult<Json<Value>> {
+    Json(body): Json<SaveFileRequest>,
+) -> AppResult<Json<SaveFileResponse>> {
     let full = state.resolve(&filepath)?;
 
     if let Some(parent) = full.parent() {
@@ -176,16 +170,7 @@ pub async fn save_file(
 
     scripts::run_save_hooks(&state, &filepath).await;
 
-    Ok(Json(json!({ "saved": true, "mtime": mtime })))
-}
-
-#[derive(Deserialize)]
-pub struct CreateBody {
-    kind: Option<String>,
-    parent: Option<String>,
-    name: Option<String>,
-    #[serde(default)]
-    content: String,
+    Ok(Json(SaveFileResponse { saved: true, mtime }))
 }
 
 /// Create a new note or folder inside the vault.
@@ -194,8 +179,8 @@ pub struct CreateBody {
 /// resolve_in_vault so a crafted name like "../escape" can't leave the vault.
 pub async fn create_entry(
     State(state): State<AppState>,
-    Json(body): Json<CreateBody>,
-) -> AppResult<Json<Value>> {
+    Json(body): Json<CreateRequest>,
+) -> AppResult<Json<CreateResponse>> {
     let kind = body.kind.unwrap_or_default().trim().to_string();
     let kind = if kind.is_empty() { "note".to_string() } else { kind };
     let parent = trim_rel(body.parent.as_deref().unwrap_or(""));
@@ -227,20 +212,14 @@ pub async fn create_entry(
         std::fs::write(&full, &body.content)?;
     }
 
-    Ok(Json(json!({ "path": rel, "kind": kind })))
-}
-
-#[derive(Deserialize)]
-pub struct RenameBody {
-    path: Option<String>,
-    name: Option<String>,
+    Ok(Json(CreateResponse { path: rel, kind }))
 }
 
 /// Move/rename a note or folder within the vault.
 pub async fn rename_entry(
     State(state): State<AppState>,
-    Json(body): Json<RenameBody>,
-) -> AppResult<Json<Value>> {
+    Json(body): Json<RenameRequest>,
+) -> AppResult<Json<RenameResponse>> {
     let src_rel = trim_rel(body.path.as_deref().unwrap_or(""));
     let mut name = body.name.unwrap_or_default().trim().to_string();
 
@@ -276,12 +255,7 @@ pub async fn rename_entry(
     }
 
     std::fs::rename(&src, &dest)?;
-    Ok(Json(json!({ "path": dest_rel })))
-}
-
-#[derive(Deserialize)]
-pub struct DeleteBody {
-    path: Option<String>,
+    Ok(Json(RenameResponse { path: dest_rel }))
 }
 
 /// Move a note, or a folder and its contents, into the vault's trash.
@@ -291,8 +265,8 @@ pub struct DeleteBody {
 /// a single confirm click.
 pub async fn delete_entry(
     State(state): State<AppState>,
-    Json(body): Json<DeleteBody>,
-) -> AppResult<Json<Value>> {
+    Json(body): Json<DeleteRequest>,
+) -> AppResult<Json<DeleteResponse>> {
     let rel = trim_rel(body.path.as_deref().unwrap_or(""));
     if rel.is_empty() {
         return Err(AppError::bad_request("No path provided"));
@@ -323,37 +297,32 @@ pub async fn delete_entry(
     let holding = trash.join(&token);
     std::fs::create_dir_all(&holding)?;
 
-    let kind = if full.is_dir() { "folder" } else { "note" };
+    let kind = if full.is_dir() { "folder" } else { "note" }.to_string();
     let name = full
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .ok_or_else(|| AppError::bad_request(format!("Not a deletable path: {rel}")))?;
 
     move_path(&full, &holding.join(&name))?;
+    let manifest = TrashManifest {
+        path: rel.clone(),
+        name,
+        kind: kind.clone(),
+        deleted_at: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+    };
     std::fs::write(
         holding.join(TRASH_MANIFEST),
-        serde_json::to_string_pretty(&json!({
-            "path": rel,
-            "name": name,
-            "kind": kind,
-            "deleted_at": Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
-        }))
-        .unwrap_or_default(),
+        serde_json::to_string_pretty(&manifest).unwrap_or_default(),
     )?;
 
-    Ok(Json(json!({ "deleted": rel, "kind": kind, "token": token })))
-}
-
-#[derive(Deserialize)]
-pub struct RestoreBody {
-    token: Option<String>,
+    Ok(Json(DeleteResponse { deleted: rel, kind, token }))
 }
 
 /// Put a trashed note or folder back where it came from.
 pub async fn restore_entry(
     State(state): State<AppState>,
-    Json(body): Json<RestoreBody>,
-) -> AppResult<Json<Value>> {
+    Json(body): Json<RestoreRequest>,
+) -> AppResult<Json<RestoreResponse>> {
     let token = body.token.unwrap_or_default().trim().to_string();
     if token.is_empty() {
         return Err(AppError::bad_request("No token provided"));
@@ -371,18 +340,12 @@ pub async fn restore_entry(
         return Err(AppError::not_found(format!("Nothing to restore for {token}")));
     }
 
-    let manifest: Value = std::fs::read_to_string(holding.join(TRASH_MANIFEST))
+    let manifest: TrashManifest = std::fs::read_to_string(holding.join(TRASH_MANIFEST))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
         .ok_or_else(|| AppError::internal("That deletion's manifest is unreadable"))?;
 
-    let rel = manifest["path"]
-        .as_str()
-        .ok_or_else(|| AppError::internal("That deletion's manifest is unreadable"))?;
-    let name = manifest["name"]
-        .as_str()
-        .ok_or_else(|| AppError::internal("That deletion's manifest is unreadable"))?;
-
+    let (rel, name) = (&manifest.path, &manifest.name);
     let target = state.resolve(rel)?;
     if target.exists() {
         return Err(AppError::conflict(format!("Something is already at {rel}")));
@@ -399,10 +362,7 @@ pub async fn restore_entry(
     move_path(&source, &target)?;
     let _ = std::fs::remove_dir_all(&holding);
 
-    Ok(Json(json!({
-        "restored": rel,
-        "kind": manifest["kind"].as_str().unwrap_or("note"),
-    })))
+    Ok(Json(RestoreResponse { restored: manifest.path.clone(), kind: manifest.kind.clone() }))
 }
 
 #[derive(Deserialize)]
@@ -415,19 +375,19 @@ pub struct StatusQuery {
 pub async fn get_status(
     State(state): State<AppState>,
     Query(params): Query<StatusQuery>,
-) -> AppResult<Json<Value>> {
+) -> AppResult<Json<StatusResponse>> {
     let full = state.resolve(&params.filepath)?;
 
     if !full.is_file() {
-        return Ok(Json(json!({ "exists": false, "changed": false })));
+        return Ok(Json(StatusResponse { exists: false, changed: false, mtime: None }));
     }
 
     let server_mtime = mtime_secs(&full);
-    Ok(Json(json!({
-        "exists": true,
-        "changed": (server_mtime - params.mtime).abs() > 0.01,
-        "mtime": server_mtime,
-    })))
+    Ok(Json(StatusResponse {
+        exists: true,
+        changed: (server_mtime - params.mtime).abs() > 0.01,
+        mtime: Some(server_mtime),
+    }))
 }
 
 /// Strip the surrounding whitespace and slashes the client may send.

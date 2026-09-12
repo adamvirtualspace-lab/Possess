@@ -10,8 +10,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use base64::Engine;
 use chrono::Local;
-use serde::Deserialize;
-use serde_json::{json, Value};
+use possess_common::{PasteImageRequest, PasteImageResponse};
 use std::path::{Path, PathBuf};
 
 /// Extensions served by /api/asset. Deliberately an allow-list of media types:
@@ -127,13 +126,6 @@ fn unique_path(folder: &Path, stem: &str, suffix: &str) -> PathBuf {
     candidate
 }
 
-#[derive(Deserialize)]
-pub struct PasteBody {
-    note: Option<String>,
-    name: Option<String>,
-    data: Option<String>,
-}
-
 /// Save an image pasted into a note, and say how to link to it.
 ///
 /// The client sends base64 because a clipboard image has no file on disk to
@@ -141,8 +133,8 @@ pub struct PasteBody {
 /// markdown — an absolute path would break if the vault moved.
 pub async fn paste_image(
     State(state): State<AppState>,
-    Json(body): Json<PasteBody>,
-) -> AppResult<Json<Value>> {
+    Json(body): Json<PasteImageRequest>,
+) -> AppResult<Json<PasteImageResponse>> {
     let note = trim_rel(body.note.as_deref().unwrap_or(""));
     if note.is_empty() {
         return Err(AppError::bad_request(
@@ -208,13 +200,11 @@ pub async fn paste_image(
     let folder_name = folder.file_name().unwrap_or_default().to_string_lossy();
     let file_name = target.file_name().unwrap_or_default().to_string_lossy();
 
-    Ok(Json(json!({
-        "path": rel,
-        // What the note should link to: sibling folder, so it survives the
-        // vault being moved or renamed.
-        "markdown": format!("{folder_name}/{file_name}"),
-        "bytes": data.len(),
-    })))
+    Ok(Json(PasteImageResponse {
+        path: rel,
+        markdown: format!("{folder_name}/{file_name}"),
+        bytes: data.len(),
+    }))
 }
 
 /// A safe filename stem: the source name when it's usable, else a stamp.

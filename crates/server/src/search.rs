@@ -5,8 +5,8 @@ use crate::notes::walk_notes;
 use crate::vault::AppState;
 use axum::extract::{Query, State};
 use axum::Json;
+use possess_common::{SearchResponse, SearchResult};
 use serde::Deserialize;
-use serde_json::{json, Value};
 
 fn default_limit() -> usize {
     100
@@ -26,14 +26,14 @@ pub struct SearchQuery {
 pub async fn search(
     State(state): State<AppState>,
     Query(params): Query<SearchQuery>,
-) -> AppResult<Json<Value>> {
+) -> AppResult<Json<SearchResponse>> {
     let needle = params.q.trim().to_lowercase();
     if needle.is_empty() {
-        return Ok(Json(json!({ "query": params.q, "results": [] })));
+        return Ok(Json(SearchResponse { query: params.q, results: Vec::new() }));
     }
 
     let base = state.vault_resolved();
-    let mut results: Vec<Value> = Vec::new();
+    let mut results: Vec<SearchResult> = Vec::new();
 
     // walkdir makes no ordering promise, so collect and sort for a stable
     // result list across calls.
@@ -63,14 +63,14 @@ pub async fn search(
             .unwrap_or_default();
 
         if !snippet.is_empty() || name_hit {
-            results.push(json!({ "path": rel, "name": name, "snippet": snippet }));
+            results.push(SearchResult { path: rel, name, snippet });
         }
         if results.len() >= params.limit {
             break;
         }
     }
 
-    Ok(Json(json!({ "query": params.q, "results": results })))
+    Ok(Json(SearchResponse { query: params.q, results }))
 }
 
 /// Python sliced by characters; slicing bytes would panic mid-codepoint.
