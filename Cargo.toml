@@ -1,0 +1,33 @@
+[package]
+name = "possess"
+version = "0.1.0"
+edition = "2021"
+description = "PossessApp - Markdown Note Taking Backend"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "cors", "set-header"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+walkdir = "2"
+mime_guess = "2"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+fs_extra = "1"
+dunce = "1"
+regex = "1"
+rust-embed = { version = "8", features = ["include-exclude"], optional = true }
+
+[features]
+# A release build with this on carries css/, js/, vendor/ and index.html
+# inside the executable, so the binary ships alone. Off by default so a dev
+# build picks up edits to those files from disk without recompiling.
+embed = ["dep:rust-embed"]
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
