@@ -1,0 +1,8 @@
+[package]
+name = "possess-markdown"
+version.workspace = true
+edition.workspace = true
+description = "Markdown rendering and source editing for PossessApp"
+
+[dependencies]
+pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
