@@ -18,6 +18,9 @@ possess-config.json
 # Rust
 /target/
 
+# WASM UI build output (./build-ui.sh)
+/pkg/
+
 # Node
 node_modules/
 

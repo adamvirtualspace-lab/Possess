@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PossessApp</title>
+
+  <!-- The same stylesheets the JS app uses: this port changes the language,
+       not the design, so every rule carries over unchanged. -->
+  <link rel="stylesheet" href="/vendor/simplemde.min.css" />
+  <link rel="stylesheet" href="/css/main.css" />
+  <link rel="stylesheet" href="/css/sidebar.css" />
+  <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/icons.css" />
+  <link rel="stylesheet" href="/css/editor.css" />
+  <link rel="stylesheet" href="/css/preview.css" />
+  <link rel="stylesheet" href="/css/images.css" />
+  <link rel="stylesheet" href="/css/undo.css" />
+  <link rel="stylesheet" href="/css/wikilinks.css" />
+  <link rel="stylesheet" href="/css/vault.css" />
+  <link rel="stylesheet" href="/css/scripts.css" />
+
+  <!-- CodeMirror stays: the editor is driven from js/editor-shim.js, which
+       Rust calls into. Loaded before the module so the shim can find it. -->
+  <script src="/vendor/simplemde.min.js"></script>
+</head>
+<body>
+  <script type="module">
+    import init from '/pkg/possess_ui.js';
+    init();
+  </script>
+</body>
+</html>

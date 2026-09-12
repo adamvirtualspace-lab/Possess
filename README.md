@@ -2,6 +2,7 @@
 
 ```
 cd [to the directory you cloned this to]
+./build-ui.sh
 cargo build --release --features embed
 ./target/release/possess
 Open http://localhost:8000
@@ -20,8 +21,17 @@ cargo run
 ```
 
 A plain `cargo run` (without `--features embed`) reads `index.html`, `css/`,
-`js/` and `vendor/` from disk, so editing them takes effect on reload with no
-rebuild.
+`js/`, `vendor/` and `pkg/` from disk, so editing them takes effect on reload
+with no rebuild.
+
+The Rust UI is built separately by `./build-ui.sh`, which writes `pkg/`. An
+embed build reads that folder at compile time, so run it first — a stale `pkg/`
+ships a stale UI. It needs the `wasm32-unknown-unknown` target and
+`wasm-bindgen`; `wasm-opt` is used when present and skipped when not.
+
+While the port is in progress, `/` serves the original JavaScript frontend and
+`/next` serves the Rust one. Both talk to the same backend, so they can be
+compared directly.
 
 ```
 cargo test

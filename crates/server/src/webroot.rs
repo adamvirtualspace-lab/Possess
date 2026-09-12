@@ -16,13 +16,17 @@ use axum::response::{IntoResponse, Response};
 /// the vault itself, none of which are the browser's business. Serving a whole
 /// directory that happens to contain them is what makes "/js/../app.py" a
 /// question worth answering, so each lookup is confined to one of these.
-const SERVED_DIRS: &[&str] = &["css", "js", "vendor"];
+const SERVED_DIRS: &[&str] = &["css", "js", "vendor", "pkg"];
+
+/// The only files at the web root itself that are reachable: the JS app's page
+/// and the Rust UI's page.
+const SERVED_FILES: &[&str] = &["index.html", "next.html"];
 
 /// Split a web-root path into its served directory and the path within it,
-/// rejecting anything that names neither index.html nor a served directory.
+/// rejecting anything that names neither a served file nor a served directory.
 fn split_served(path: &str) -> Option<(&str, &str)> {
     match path.split_once('/') {
-        None => (path == "index.html").then_some(("", path)),
+        None => SERVED_FILES.contains(&path).then_some(("", path)),
         Some((prefix, rest)) => SERVED_DIRS.contains(&prefix).then_some((prefix, rest)),
     }
 }
@@ -110,15 +114,25 @@ mod inner {
     #[exclude = "simplemde-markdown-editor-fullrepo/*"]
     struct Vendor;
 
+    // The Rust UI's build output. Run ./build-ui.sh before an embed build:
+    // rust-embed reads the folder at compile time, so a stale pkg/ ships a
+    // stale UI, and a missing one fails the build rather than shipping nothing.
+    #[derive(Embed)]
+    #[folder = "../../pkg"]
+    struct Pkg;
+
     const INDEX: &[u8] = include_bytes!("../../../index.html");
+    const NEXT: &[u8] = include_bytes!("../../../next.html");
 
     pub fn read(path: &str) -> Option<Vec<u8>> {
         let (prefix, rest) = super::split_served(path)?;
-        match prefix {
-            "" => Some(INDEX.to_vec()),
-            "css" => Css::get(rest).map(|f| f.data.into_owned()),
-            "js" => Js::get(rest).map(|f| f.data.into_owned()),
-            "vendor" => Vendor::get(rest).map(|f| f.data.into_owned()),
+        match (prefix, rest) {
+            ("", "index.html") => Some(INDEX.to_vec()),
+            ("", "next.html") => Some(NEXT.to_vec()),
+            ("css", _) => Css::get(rest).map(|f| f.data.into_owned()),
+            ("js", _) => Js::get(rest).map(|f| f.data.into_owned()),
+            ("vendor", _) => Vendor::get(rest).map(|f| f.data.into_owned()),
+            ("pkg", _) => Pkg::get(rest).map(|f| f.data.into_owned()),
             _ => None,
         }
     }
@@ -142,6 +156,11 @@ mod tests {
         assert_eq!(
             split_served("vendor/simplemde.min.js"),
             Some(("vendor", "simplemde.min.js"))
+        );
+        assert_eq!(split_served("next.html"), Some(("", "next.html")));
+        assert_eq!(
+            split_served("pkg/possess_ui_bg.wasm"),
+            Some(("pkg", "possess_ui_bg.wasm"))
         );
     }
 

@@ -18,6 +18,16 @@ use serde::Deserialize;
 use tower_http::cors::{Any, CorsLayer};
 use vault::AppState;
 
+/// The Rust UI, served alongside the JS app rather than replacing it.
+///
+/// Both pages talk to the same backend, so the two can be compared directly
+/// while the port is in progress. They swap once /next reaches parity.
+async fn next_index() -> AppResult<Html<String>> {
+    let bytes = webroot::read("next.html")
+        .ok_or_else(|| AppError::internal("Could not read next.html"))?;
+    Ok(Html(String::from_utf8_lossy(&bytes).into_owned()))
+}
+
 /// Serve index.html with cache-busting query strings on our own CSS/JS.
 ///
 /// Plain <link>/<script> tags get cached by the browser with no way to know a
@@ -174,6 +184,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(index))
+        .route("/next", get(next_index))
         .route("/api/vault", get(get_vault).post(set_vault))
         .route("/api/browse", get(browse))
         .route("/api/folders", get(notes::list_folders))
@@ -194,6 +205,7 @@ async fn main() {
         .route("/css/*rest", get(|p| static_file(p, "css")))
         .route("/js/*rest", get(|p| static_file(p, "js")))
         .route("/vendor/*rest", get(|p| static_file(p, "vendor")))
+        .route("/pkg/*rest", get(|p| static_file(p, "pkg")))
         // CORS for local development
         .layer(
             CorsLayer::new()
