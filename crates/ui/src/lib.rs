@@ -5,14 +5,32 @@
 //! reaches parity.
 
 mod api;
+mod context_menu;
 mod editor;
 mod inline_edit;
+mod linkcomplete;
+mod modal;
+mod notes;
 mod preview;
+mod resizer;
+mod scripts;
+mod sidebar;
 mod state;
+mod store;
+mod theme;
+mod undo;
+mod vault;
 
 use editor::{Editor, Handlers};
+use context_menu::ContextMenu;
+use linkcomplete::LinkComplete;
 use leptos::prelude::*;
 use possess_markdown::{assets, render, RenderContext};
+use scripts::ScriptsPanel;
+use sidebar::Sidebar;
+use theme::ThemeButton;
+use undo::UndoBar;
+use vault::VaultPicker;
 use state::{AppState, ViewMode};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -58,7 +76,7 @@ fn App() -> impl IntoView {
         if previous.is_some() {
             return;
         }
-        build_editor();
+        build_editor(state.clone());
 
         // The change notification carries no payload; the state pulls what it
         // needs once the typing stops.
@@ -66,6 +84,8 @@ fn App() -> impl IntoView {
         editor::editor().on_change(move || for_change.on_edit());
 
         preview::wire(state.clone());
+        resizer::init();
+        theme::follow_system();
 
         // Load the vault's notes, then open the first one so there is
         // something on screen. The real sidebar replaces this list.
@@ -77,7 +97,7 @@ fn App() -> impl IntoView {
             }
             let first = state.notes.get_untracked().first().cloned();
             if let Some(first) = first {
-                if let Err(err) = state.open(&first).await {
+                if let Err(err) = state.open_and_reveal(&first).await {
                     leptos::logging::error!("Could not open note: {err}");
                 }
             }
@@ -91,18 +111,6 @@ fn App() -> impl IntoView {
 #[component]
 fn Shell() -> impl IntoView {
     let state = expect_context::<AppState>();
-
-    let open_note = {
-        let state = state.clone();
-        move |path: String| {
-            let state = state.clone();
-            leptos::task::spawn_local(async move {
-                if let Err(err) = state.open(&path).await {
-                    leptos::logging::error!("Could not open note: {err}");
-                }
-            });
-        }
-    };
 
     let set_mode = {
         let state = state.clone();
@@ -119,46 +127,20 @@ fn Shell() -> impl IntoView {
     };
     let set_edit = set_mode.clone();
 
-    let notes = state.notes;
     let current = state.current_file;
-    let vault = state.vault_name;
     let mode = state.view_mode;
     let html = state.preview_html;
 
     view! {
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <div class="logo-icon"><span>"P"</span></div>
-                <span class="sidebar-title">"PossessApp"</span>
-            </div>
-            <button class="vault-btn">
-                <span class="vault-btn-name">{move || vault.get()}</span>
-            </button>
-            <nav id="file-tree">
-                <For
-                    each=move || notes.get()
-                    key=|path| path.clone()
-                    children=move |path| {
-                        let open = open_note.clone();
-                        let clicked = path.clone();
-                        let mine = path.clone();
-                        let label = path.rsplit('/').next().unwrap_or(&path).to_string();
-                        view! {
-                            <div
-                                class="file-item"
-                                class:active=move || {
-                                    current.get().as_deref() == Some(mine.as_str())
-                                }
-                                title=path.clone()
-                                on:click=move |_| open(clicked.clone())
-                            >
-                                {label}
-                            </div>
-                        }
-                    }
-                />
-            </nav>
-        </aside>
+        <Sidebar />
+        <LinkComplete />
+        <ContextMenu />
+        <UndoBar />
+        <VaultPicker />
+        <ScriptsPanel />
+
+        // Drag handle: sidebar <-> main content.
+        <div class="resizer" id="sidebar-resizer" title="Drag to resize"></div>
 
         <section class="main-content">
             <div class="top-bar">
@@ -166,6 +148,7 @@ fn Shell() -> impl IntoView {
                     {move || current.get().unwrap_or_else(|| "No file selected".into())}
                 </span>
                 <div class="btn-group">
+                    <ThemeButton />
                     <button
                         class="btn"
                         class:active=move || mode.get() == ViewMode::Edit
@@ -188,6 +171,8 @@ fn Shell() -> impl IntoView {
                 // once, with no reactive children, so Leptos never touches the
                 // DOM SimpleMDE puts inside it.
                 <div id="editor-host"></div>
+                // Drag handle: editor <-> preview, only visible side by side.
+                <div class="split-resizer" id="split-resizer" title="Drag to resize"></div>
                 <div
                     id="preview-panel"
                     class="markdown-preview"
@@ -207,7 +192,7 @@ fn Shell() -> impl IntoView {
 /// SimpleMDE's own side-by-side pane renders through the same renderer as the
 /// preview, and inline image thumbnails resolve paths through the same rules —
 /// so neither has a second implementation that could drift.
-fn build_editor() {
+fn build_editor(state: AppState) {
     let context: NoteContext = Rc::new(RefCell::new((None, Vec::new())));
     let for_render = context.clone();
     let for_assets = context.clone();
@@ -225,6 +210,16 @@ fn build_editor() {
             asset_url: Some(Box::new(move |src| {
                 let borrowed = for_assets.borrow();
                 assets::url(&src, borrowed.0.as_deref())
+            })),
+            // Moving the cursor re-evaluates whether a `[[` is being typed;
+            // losing focus closes the list.
+            on_cursor: Some(Box::new({
+                let state = state.clone();
+                move || linkcomplete::update(&state)
+            })),
+            on_blur: Some(Box::new({
+                let state = state.clone();
+                move || linkcomplete::close(&state)
             })),
             ..Default::default()
         },

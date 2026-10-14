@@ -104,7 +104,7 @@ fn open_wikilink(state: &AppState, path: &str) {
     if let Some(found) = wikilinks::resolve(path, current.as_deref(), &notes) {
         let state = state.clone();
         leptos::task::spawn_local(async move {
-            if let Err(err) = state.open(&found).await {
+            if let Err(err) = state.open_and_reveal(&found).await {
                 leptos::logging::error!("Could not open note: {err}");
             }
         });
@@ -137,7 +137,7 @@ fn open_wikilink(state: &AppState, path: &str) {
                 if let Err(err) = state.load_notes().await {
                     leptos::logging::error!("Could not reload notes: {err}");
                 }
-                if let Err(err) = state.open(&created.path).await {
+                if let Err(err) = state.open_and_reveal(&created.path).await {
                     leptos::logging::error!("Could not open new note: {err}");
                 }
             }

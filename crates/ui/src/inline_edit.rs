@@ -18,6 +18,7 @@ use crate::preview::closest;
 use crate::state::AppState;
 use leptos::prelude::*;
 use possess_markdown::source::{self, SourceRange};
+use possess_markdown::utf16;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
@@ -152,7 +153,9 @@ fn open(
 
     resize(&textarea, original_height);
     let _ = textarea.focus();
-    let end = value.chars().count() as u32;
+    // UTF-16, which is what a textarea's selection offsets count — a char
+    // count would land short on any line holding an emoji.
+    let end = utf16::len(&value) as u32;
     let _ = textarea.set_selection_range(end, end);
 
     let session = Rc::new(Session {
@@ -370,12 +373,14 @@ fn at_first_row(session: &Rc<Session>) -> bool {
         return true;
     }
     match session.kind {
-        // In a code block a row is a line, so no measuring is needed.
-        Kind::Block => session
-            .textarea
-            .value()
-            .find('\n')
-            .is_none_or(|first| caret as usize <= first),
+        // In a code block a row is a line, so no measuring is needed — but the
+        // newline's byte offset has to be put in the caret's units first.
+        Kind::Block => {
+            let value = session.textarea.value();
+            value
+                .find('\n')
+                .is_none_or(|first| caret as usize <= utf16::offset_of(&value, first))
+        }
         Kind::Line => match measure_caret(&session.textarea) {
             Some(m) => m.marker_top <= m.padding_top + 3.0,
             None => true,
@@ -387,11 +392,12 @@ fn at_first_row(session: &Rc<Session>) -> bool {
 fn at_last_row(session: &Rc<Session>) -> bool {
     let caret = session.textarea.selection_start().ok().flatten().unwrap_or(0) as usize;
     match session.kind {
-        Kind::Block => session
-            .textarea
-            .value()
-            .rfind('\n')
-            .is_none_or(|last| caret > last),
+        Kind::Block => {
+            let value = session.textarea.value();
+            value
+                .rfind('\n')
+                .is_none_or(|last| caret > utf16::offset_of(&value, last))
+        }
         Kind::Line => match measure_caret(&session.textarea) {
             Some(m) => {
                 m.marker_top + m.line_height >= m.total_height - m.padding_bottom - 2.0
@@ -439,8 +445,9 @@ fn measure_caret(textarea: &web_sys::HtmlTextAreaElement) -> Option<CaretRow> {
 
     let caret = textarea.selection_start().ok().flatten().unwrap_or(0) as usize;
     let value = textarea.value();
-    let upto: String = value.chars().take(caret).collect();
-    mirror.set_text_content(Some(&upto));
+    // The caret is a UTF-16 offset; taking that many chars would mirror the
+    // wrong amount of text and measure the wrong row.
+    mirror.set_text_content(Some(utf16::truncate_at(&value, caret)));
 
     // A zero-width space, so the marker has a box to measure without changing
     // how the text before it wraps.

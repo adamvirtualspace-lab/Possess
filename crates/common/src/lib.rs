@@ -11,6 +11,8 @@
 //! plain `Option` — the difference is observable to the client and is covered by
 //! the differential test.
 
+pub mod tree;
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

@@ -323,3 +323,243 @@ mod tests {
         assert_eq!(link_at("no links", 3), None);
     }
 }
+
+// ── Autocomplete ──
+//
+// Typing `[[` offers the notes in the vault. The ranking and the shortest
+// insertable form both live here because both are `resolve` seen from another
+// angle: one finds candidates for what is being typed, the other asks which of
+// a note's names still resolves back to it.
+
+/// At most this many options are offered at once.
+pub const MAX_COMPLETIONS: usize = 12;
+
+/// An unclosed `[[` the cursor sits inside.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkContext {
+    /// Where the `[[` starts, as a UTF-16 offset — what the editor indexes by.
+    pub start: usize,
+    /// What has been typed since the brackets.
+    pub typed: String,
+}
+
+/// The link being typed at this cursor, if there is one.
+///
+/// `ch` is a UTF-16 offset, as every editor position is. Returns None once the
+/// link is closed, so moving the cursor back through a finished link does not
+/// reopen the list.
+pub fn context_at(line: &str, ch: usize) -> Option<LinkContext> {
+    let before = crate::utf16::truncate_at(line, ch);
+    let open = before.rfind("[[")?;
+    let typed = &before[open + 2..];
+
+    // A `]]` means the link is already closed; a bare `[` means these are not
+    // the brackets we think they are.
+    if typed.contains("]]") || typed.contains('[') {
+        return None;
+    }
+
+    Some(LinkContext {
+        start: crate::utf16::offset_of(line, open),
+        typed: typed.to_string(),
+    })
+}
+
+/// The note's display name: its filename without the `.md`.
+fn base_name(path: &str) -> &str {
+    let file = path.rsplit('/').next().unwrap_or(path);
+    file.strip_suffix(".md").unwrap_or(file)
+}
+
+/// Notes matching `query`, best first.
+///
+/// Matching falls back to the whole path, so "projects/id" finds
+/// "projects/ideas.md", but ranking is on the filename, which is what people
+/// are usually typing. (Only a contiguous substring matches — "proj/id" finds
+/// nothing, despite what the comment in the JavaScript this replaces implies.)
+/// Ties break on path length and then alphabetically, so the shortest and
+/// nearest note wins rather than whichever the directory walk reached first.
+pub fn complete(
+    query: &str,
+    notes: &[String],
+    current: Option<&str>,
+    max: usize,
+) -> Vec<String> {
+    let needle = query.trim().to_lowercase();
+
+    let mut scored: Vec<(u8, &String)> = notes
+        .iter()
+        // Linking a note to itself is never what was meant.
+        .filter(|path| Some(path.as_str()) != current)
+        .filter_map(|path| {
+            if needle.is_empty() {
+                return Some((2, path));
+            }
+
+            let base = base_name(path).to_lowercase();
+            if base.starts_with(&needle) {
+                Some((0, path))
+            } else if base.contains(&needle) {
+                Some((1, path))
+            } else if path.to_lowercase().contains(&needle) {
+                Some((2, path))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    scored.sort_by(|(a_rank, a), (b_rank, b)| {
+        a_rank
+            .cmp(b_rank)
+            .then_with(|| a.len().cmp(&b.len()))
+            .then_with(|| a.cmp(b))
+    });
+
+    scored.into_iter().take(max).map(|(_, path)| path.clone()).collect()
+}
+
+/// The shortest text that still links back to `path`.
+///
+/// `resolve` run backwards: if the bare name already finds this note, the link
+/// carries only the name, so links stay readable and gain a folder only when
+/// they need one to be unambiguous.
+pub fn shortest_form(path: &str, from_note: Option<&str>, notes: &[String]) -> String {
+    let full = path.strip_suffix(".md").unwrap_or(path);
+    let short = full.rsplit('/').next().unwrap_or(full);
+
+    if resolve(short, from_note, notes).as_deref() == Some(path) {
+        short.to_string()
+    } else {
+        full.to_string()
+    }
+}
+
+#[cfg(test)]
+mod completion_tests {
+    use super::*;
+
+    fn notes(paths: &[&str]) -> Vec<String> {
+        paths.iter().map(|p| p.to_string()).collect()
+    }
+
+    #[test]
+    fn finds_the_link_being_typed() {
+        let found = context_at("see [[Ide", 9).unwrap();
+        assert_eq!(found.typed, "Ide");
+        assert_eq!(found.start, 4);
+    }
+
+    #[test]
+    fn offers_everything_on_bare_brackets() {
+        let found = context_at("see [[", 6).unwrap();
+        assert_eq!(found.typed, "");
+    }
+
+    #[test]
+    fn a_closed_link_does_not_reopen_the_list() {
+        // The cursor has moved back through a finished link.
+        assert_eq!(context_at("see [[Ideas]] here", 18), None);
+    }
+
+    #[test]
+    fn a_stray_bracket_is_not_a_link() {
+        assert_eq!(context_at("see [[Ide[a", 11), None);
+        assert_eq!(context_at("no brackets", 5), None);
+    }
+
+    #[test]
+    fn the_cursor_before_the_brackets_sees_nothing() {
+        assert_eq!(context_at("see [[Ide", 3), None);
+    }
+
+    #[test]
+    fn the_start_is_in_editor_units_not_bytes() {
+        // The whole reason the helpers exist: an emoji before the brackets
+        // makes the byte offset and the editor's offset disagree.
+        let line = "a 🙂 [[Ide";
+        let found = context_at(line, 10).unwrap();
+
+        assert_eq!(found.typed, "Ide");
+        assert_eq!(line.find("[["), Some(7));   // bytes
+        assert_eq!(found.start, 5);             // what the editor means
+    }
+
+    #[test]
+    fn ranks_name_prefix_above_name_substring_above_path() {
+        let all = notes(&["ideas.md", "my-ideas.md", "ideas/other.md"]);
+        let found = complete("ide", &all, None, 10);
+        assert_eq!(found, ["ideas.md", "my-ideas.md", "ideas/other.md"]);
+    }
+
+    #[test]
+    fn matches_on_the_path_but_ranks_on_the_name() {
+        // "projects/id" appears in no filename, only in a full path.
+        let all = notes(&["projects/ideas.md", "elsewhere.md"]);
+        assert_eq!(complete("projects/id", &all, None, 10), ["projects/ideas.md"]);
+    }
+
+    #[test]
+    fn path_matching_needs_a_contiguous_substring() {
+        // Documents the real behaviour: the JavaScript's comment claims
+        // "proj/id" works, but neither implementation can do that.
+        let all = notes(&["projects/ideas.md"]);
+        assert!(complete("proj/id", &all, None, 10).is_empty());
+    }
+
+    #[test]
+    fn ties_break_on_length_then_alphabetically() {
+        let all = notes(&["b/idea.md", "a/idea.md", "idea.md"]);
+        let found = complete("idea", &all, None, 10);
+        assert_eq!(found, ["idea.md", "a/idea.md", "b/idea.md"]);
+    }
+
+    #[test]
+    fn the_open_note_is_never_offered() {
+        let all = notes(&["ideas.md", "other.md"]);
+        let found = complete("", &all, Some("ideas.md"), 10);
+        assert_eq!(found, ["other.md"]);
+    }
+
+    #[test]
+    fn an_empty_query_offers_everything_up_to_the_limit() {
+        let all = notes(&["a.md", "b.md", "c.md"]);
+        assert_eq!(complete("", &all, None, 2).len(), 2);
+        assert_eq!(complete("  ", &all, None, 10).len(), 3);
+    }
+
+    #[test]
+    fn matching_ignores_case() {
+        let all = notes(&["Ideas.md"]);
+        assert_eq!(complete("IDEAS", &all, None, 10), ["Ideas.md"]);
+    }
+
+    #[test]
+    fn inserts_the_bare_name_when_it_already_resolves() {
+        let all = notes(&["projects/Ideas.md"]);
+        assert_eq!(shortest_form("projects/Ideas.md", None, &all), "Ideas");
+    }
+
+    #[test]
+    fn qualifies_the_link_when_the_bare_name_is_ambiguous() {
+        // Two notes share a name, and the bare form resolves to the other one,
+        // so this link has to carry its folder.
+        let all = notes(&["Ideas.md", "projects/Ideas.md"]);
+        assert_eq!(
+            shortest_form("projects/Ideas.md", None, &all),
+            "projects/Ideas"
+        );
+        // The one the bare name does find keeps the short form.
+        assert_eq!(shortest_form("Ideas.md", None, &all), "Ideas");
+    }
+
+    #[test]
+    fn the_linking_note_decides_what_counts_as_ambiguous() {
+        // From inside projects/, the sibling wins the bare name.
+        let all = notes(&["Ideas.md", "projects/Ideas.md"]);
+        assert_eq!(
+            shortest_form("projects/Ideas.md", Some("projects/note.md"), &all),
+            "Ideas"
+        );
+    }
+}
