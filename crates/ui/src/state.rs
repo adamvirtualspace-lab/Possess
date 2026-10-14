@@ -95,6 +95,10 @@ pub struct AppState {
     pub preview_html: RwSignal<String>,
     /// Set while the editor holds changes that have not been saved.
     pub dirty: RwSignal<bool>,
+    /// Notes offered by the `[[` autocomplete; empty means the list is closed.
+    pub complete_matches: RwSignal<Vec<String>>,
+    /// Which of them is selected.
+    pub complete_active: RwSignal<usize>,
 }
 
 #[derive(Default)]
@@ -128,6 +132,8 @@ impl AppState {
             vault_name: RwSignal::new(String::new()),
             preview_html: RwSignal::new(String::new()),
             dirty: RwSignal::new(false),
+            complete_matches: RwSignal::new(Vec::new()),
+            complete_active: RwSignal::new(0),
         }
     }
 

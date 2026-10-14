@@ -7,11 +7,13 @@
 mod api;
 mod editor;
 mod inline_edit;
+mod linkcomplete;
 mod preview;
 mod sidebar;
 mod state;
 
 use editor::{Editor, Handlers};
+use linkcomplete::LinkComplete;
 use leptos::prelude::*;
 use possess_markdown::{assets, render, RenderContext};
 use sidebar::Sidebar;
@@ -60,7 +62,7 @@ fn App() -> impl IntoView {
         if previous.is_some() {
             return;
         }
-        build_editor();
+        build_editor(state.clone());
 
         // The change notification carries no payload; the state pulls what it
         // needs once the typing stops.
@@ -115,6 +117,7 @@ fn Shell() -> impl IntoView {
 
     view! {
         <Sidebar />
+        <LinkComplete />
 
         <section class="main-content">
             <div class="top-bar">
@@ -163,7 +166,7 @@ fn Shell() -> impl IntoView {
 /// SimpleMDE's own side-by-side pane renders through the same renderer as the
 /// preview, and inline image thumbnails resolve paths through the same rules —
 /// so neither has a second implementation that could drift.
-fn build_editor() {
+fn build_editor(state: AppState) {
     let context: NoteContext = Rc::new(RefCell::new((None, Vec::new())));
     let for_render = context.clone();
     let for_assets = context.clone();
@@ -181,6 +184,16 @@ fn build_editor() {
             asset_url: Some(Box::new(move |src| {
                 let borrowed = for_assets.borrow();
                 assets::url(&src, borrowed.0.as_deref())
+            })),
+            // Moving the cursor re-evaluates whether a `[[` is being typed;
+            // losing focus closes the list.
+            on_cursor: Some(Box::new({
+                let state = state.clone();
+                move || linkcomplete::update(&state)
+            })),
+            on_blur: Some(Box::new({
+                let state = state.clone();
+                move || linkcomplete::close(&state)
             })),
             ..Default::default()
         },

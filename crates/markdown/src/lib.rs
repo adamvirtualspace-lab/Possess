@@ -7,6 +7,7 @@
 pub mod assets;
 pub mod render;
 pub mod source;
+pub mod utf16;
 pub mod wikilinks;
 
 pub use render::{render, RenderContext};
