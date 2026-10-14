@@ -20,11 +20,16 @@
   <link rel="stylesheet" href="/css/vault.css" />
   <link rel="stylesheet" href="/css/scripts.css" />
 
-  <!-- CodeMirror stays: the editor is driven from js/editor-shim.js, which
-       Rust calls into. Loaded before the module so the shim can find it. -->
+  <!-- CodeMirror stays. editor-shim.js drives it and is the only JavaScript
+       the Rust UI keeps; both load before the module that calls into them. -->
   <script src="/vendor/simplemde.min.js"></script>
+  <script src="/js/editor-shim.js"></script>
 </head>
 <body>
+  <!-- css/layout.css makes #app the flex row holding the sidebar and the main
+       content, so the shell mounts inside it rather than into <body>. -->
+  <div id="app"></div>
+
   <script type="module">
     import init from '/pkg/possess_ui.js';
     init();

@@ -5,94 +5,243 @@
 //! reaches parity.
 
 mod api;
+mod editor;
+mod inline_edit;
+mod preview;
+mod state;
 
+use editor::{Editor, Handlers};
 use leptos::prelude::*;
-use possess_markdown::{render, RenderContext};
+use possess_markdown::{assets, render, RenderContext};
+use state::{AppState, ViewMode};
+use std::cell::RefCell;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
 #[wasm_bindgen(start)]
 pub fn start() {
     // Without this a panic in WASM is an unhelpful "unreachable executed".
     console_error_panic_hook::set_once();
-    leptos::mount::mount_to_body(App);
+
+    let root = web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.get_element_by_id("app"))
+        .and_then(|element| element.dyn_into::<web_sys::HtmlElement>().ok())
+        .expect("#app is in the page");
+
+    leptos::mount::mount_to(root, App).forget();
 }
 
-/// What the placeholder page is showing: the first note in the vault, rendered.
-#[derive(Default, Clone)]
-struct Loaded {
-    vault: String,
-    note: String,
-    html: String,
-    notes: Vec<String>,
-}
-
-/// Placeholder shell.
+/// What the editor's own callbacks need to know about the open note.
 ///
-/// It opens the first note in the vault and renders it, which exercises the
-/// whole chain — WASM start-up, the typed API client, the shared types and the
-/// Markdown renderer — before any real component lands.
+/// The editor is built before the state that tracks the open note exists, and
+/// its callbacks outlive any one note. This cell breaks that circle: the
+/// callbacks read it, and an effect keeps it current.
+type NoteContext = Rc<RefCell<(Option<String>, Vec<String>)>>;
+
+thread_local! {
+    static RENDER_CONTEXT: RefCell<Option<NoteContext>> = const { RefCell::new(None) };
+}
+
 #[component]
 fn App() -> impl IntoView {
-    let state = RwSignal::new(None::<Result<Loaded, String>>);
+    let state = AppState::new();
+    provide_context(state.clone());
+    track_note_context(state.clone());
 
-    leptos::task::spawn_local(async move {
-        state.set(Some(load_first_note().await));
+    // Deferred to an effect because the editor is built into an element the
+    // shell renders, which does not exist until after this view is mounted.
+    // SimpleMDE replaces that element with its own DOM, so this must happen
+    // exactly once.
+    Effect::new(move |previous: Option<()>| {
+        if previous.is_some() {
+            return;
+        }
+        build_editor();
+
+        // The change notification carries no payload; the state pulls what it
+        // needs once the typing stops.
+        let for_change = state.clone();
+        editor::editor().on_change(move || for_change.on_edit());
+
+        preview::wire(state.clone());
+
+        // Load the vault's notes, then open the first one so there is
+        // something on screen. The real sidebar replaces this list.
+        let state = state.clone();
+        leptos::task::spawn_local(async move {
+            if let Err(err) = state.load_notes().await {
+                leptos::logging::error!("Could not load notes: {err}");
+                return;
+            }
+            let first = state.notes.get_untracked().first().cloned();
+            if let Some(first) = first {
+                if let Err(err) = state.open(&first).await {
+                    leptos::logging::error!("Could not open note: {err}");
+                }
+            }
+        });
     });
 
-    view! {
-        <main class="markdown-preview" style="padding: 2rem; max-width: 52rem;">
-            {move || match state.get() {
-                None => view! { <p>"Loading…"</p> }.into_any(),
-                Some(Err(err)) => view! { <p>"Could not load: " {err}</p> }.into_any(),
-                Some(Ok(loaded)) => view! {
-                    <p style="opacity: .6">
-                        {format!("{} · {} notes · showing {}",
-                            loaded.vault, loaded.notes.len(), loaded.note)}
-                    </p>
-                    <hr />
-                    // The renderer produces HTML, which is the point of it.
-                    <div inner_html=loaded.html></div>
+    view! { <Shell /> }
+}
+
+/// The chrome around the editor and preview: note list, title, mode buttons.
+#[component]
+fn Shell() -> impl IntoView {
+    let state = expect_context::<AppState>();
+
+    let open_note = {
+        let state = state.clone();
+        move |path: String| {
+            let state = state.clone();
+            leptos::task::spawn_local(async move {
+                if let Err(err) = state.open(&path).await {
+                    leptos::logging::error!("Could not open note: {err}");
                 }
-                .into_any(),
-            }}
-        </main>
+            });
+        }
+    };
+
+    let set_mode = {
+        let state = state.clone();
+        move |mode: ViewMode| {
+            state.view_mode.set(mode);
+            match mode {
+                ViewMode::Preview => {
+                    state.rerender();
+                    state.editor().hide();
+                }
+                ViewMode::Edit => state.editor().show(),
+            }
+        }
+    };
+    let set_edit = set_mode.clone();
+
+    let notes = state.notes;
+    let current = state.current_file;
+    let vault = state.vault_name;
+    let mode = state.view_mode;
+    let html = state.preview_html;
+
+    view! {
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-icon"><span>"P"</span></div>
+                <span class="sidebar-title">"PossessApp"</span>
+            </div>
+            <button class="vault-btn">
+                <span class="vault-btn-name">{move || vault.get()}</span>
+            </button>
+            <nav id="file-tree">
+                <For
+                    each=move || notes.get()
+                    key=|path| path.clone()
+                    children=move |path| {
+                        let open = open_note.clone();
+                        let clicked = path.clone();
+                        let mine = path.clone();
+                        let label = path.rsplit('/').next().unwrap_or(&path).to_string();
+                        view! {
+                            <div
+                                class="file-item"
+                                class:active=move || {
+                                    current.get().as_deref() == Some(mine.as_str())
+                                }
+                                title=path.clone()
+                                on:click=move |_| open(clicked.clone())
+                            >
+                                {label}
+                            </div>
+                        }
+                    }
+                />
+            </nav>
+        </aside>
+
+        <section class="main-content">
+            <div class="top-bar">
+                <span id="current-file-name">
+                    {move || current.get().unwrap_or_else(|| "No file selected".into())}
+                </span>
+                <div class="btn-group">
+                    <button
+                        class="btn"
+                        class:active=move || mode.get() == ViewMode::Edit
+                        on:click=move |_| set_edit(ViewMode::Edit)
+                    >
+                        "Edit"
+                    </button>
+                    <button
+                        class="btn"
+                        class:active=move || mode.get() == ViewMode::Preview
+                        on:click=move |_| set_mode(ViewMode::Preview)
+                    >
+                        "Preview"
+                    </button>
+                </div>
+            </div>
+
+            <div class="viewport">
+                // The editor is built into this host after mount. Rendered
+                // once, with no reactive children, so Leptos never touches the
+                // DOM SimpleMDE puts inside it.
+                <div id="editor-host"></div>
+                <div
+                    id="preview-panel"
+                    class="markdown-preview"
+                    style:display=move || {
+                        if mode.get() == ViewMode::Preview { "block" } else { "none" }
+                    }
+                    inner_html=move || html.get()
+                ></div>
+            </div>
+        </section>
     }
 }
 
-/// Fetch the vault, its notes, and render the first one.
-async fn load_first_note() -> Result<Loaded, String> {
-    let vault = api::get_vault().await?;
-    let folders = api::list_folders(None).await?;
+/// Build the CodeMirror editor and hand it the callbacks it needs.
+///
+/// `render` and `asset_url` are the two places JavaScript asks Rust a question:
+/// SimpleMDE's own side-by-side pane renders through the same renderer as the
+/// preview, and inline image thumbnails resolve paths through the same rules —
+/// so neither has a second implementation that could drift.
+fn build_editor() {
+    let context: NoteContext = Rc::new(RefCell::new((None, Vec::new())));
+    let for_render = context.clone();
+    let for_assets = context.clone();
 
-    // The same flat map the sidebar builds its tree from: folder path to the
-    // notes directly inside it.
-    let mut notes: Vec<String> = Vec::new();
-    for (folder, entries) in &folders.folders {
-        for entry in entries {
-            notes.push(if folder == "." {
-                entry.0.clone()
-            } else {
-                format!("{folder}/{}", entry.0)
-            });
-        }
-    }
-    notes.sort();
-
-    let Some(first) = notes.first().cloned() else {
-        return Ok(Loaded {
-            vault: vault.name,
-            note: "no notes yet".to_string(),
+    Editor::init(
+        "editor-host",
+        Handlers {
+            render: Some(Box::new(move |text| {
+                let borrowed = for_render.borrow();
+                render(
+                    &text,
+                    &RenderContext { note_path: borrowed.0.as_deref(), notes: &borrowed.1 },
+                )
+            })),
+            asset_url: Some(Box::new(move |src| {
+                let borrowed = for_assets.borrow();
+                assets::url(&src, borrowed.0.as_deref())
+            })),
             ..Default::default()
+        },
+    );
+
+    RENDER_CONTEXT.with(|slot| *slot.borrow_mut() = Some(context));
+}
+
+/// Keep the editor's callbacks in step with the open note and the note list.
+fn track_note_context(state: AppState) {
+    Effect::new(move |_| {
+        let current = state.current_file.get();
+        let notes = state.notes.get();
+        RENDER_CONTEXT.with(|slot| {
+            if let Some(context) = slot.borrow().as_ref() {
+                *context.borrow_mut() = (current, notes);
+            }
         });
-    };
-
-    let file = api::get_file(&first).await?;
-    let context = RenderContext { note_path: Some(&first), notes: &notes };
-
-    Ok(Loaded {
-        html: render(&file.content, &context),
-        vault: vault.name,
-        note: first,
-        notes,
-    })
+    });
 }
