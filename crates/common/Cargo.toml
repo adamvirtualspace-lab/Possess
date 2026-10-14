@@ -1,0 +1,9 @@
+[package]
+name = "possess-common"
+version.workspace = true
+edition.workspace = true
+description = "Request and response types shared by the PossessApp server and UI"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

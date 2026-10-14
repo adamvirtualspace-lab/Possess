@@ -3,16 +3,17 @@ setlocal
 
 cd /d "%~dp0"
 
-set "APP_PYTHON=%~dp0.venv_win\Scripts\python.exe"
+set "APP_EXE=%~dp0possess.exe"
+if not exist "%APP_EXE%" set "APP_EXE=%~dp0target\release\possess.exe"
 
-if not exist "%APP_PYTHON%" (
-    echo ERROR: The Python virtual environment was not found.
-    echo Expected: %APP_PYTHON%
+if not exist "%APP_EXE%" (
+    echo ERROR: The PossessApp binary was not found.
+    echo Expected: %~dp0possess.exe
     echo.
-    echo Create it and install the dependencies with:
-    echo   python -m venv .venv_win
-    echo   .venv_win\Scripts\python.exe -m pip install -r requirements.txt
+    echo Build it with:
+    echo   cargo build --release --features embed
     echo.
+    echo Or install Rust first from https://rustup.rs
     pause
     exit /b 1
 )
@@ -22,7 +23,7 @@ echo Open http://localhost:8000 in your browser.
 echo Press Ctrl+C to stop the server.
 echo.
 
-"%APP_PYTHON%" "%~dp0app.py"
+"%APP_EXE%"
 
 if errorlevel 1 (
     echo.
