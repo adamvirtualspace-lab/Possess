@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PossessApp</title>
 
-  <!-- Theme, resolved before first paint to avoid a flash of the wrong one -->
+  <!-- Theme, resolved before first paint to avoid a flash of the wrong one.
+       Has to be inline and synchronous: the WebAssembly has not loaded yet. -->
   <script>
     (function () {
       var theme;
@@ -21,10 +22,9 @@
     })();
   </script>
 
-  <!-- SimpleMDE CSS (local vendor) -->
+  <!-- The same stylesheets the JS app uses: this port changes the language,
+       not the design, so every rule carries over unchanged. -->
   <link rel="stylesheet" href="/vendor/simplemde.min.css" />
-
-  <!-- Custom CSS -->
   <link rel="stylesheet" href="/css/main.css" />
   <link rel="stylesheet" href="/css/sidebar.css" />
   <link rel="stylesheet" href="/css/layout.css" />
@@ -37,148 +37,19 @@
   <link rel="stylesheet" href="/css/vault.css" />
   <link rel="stylesheet" href="/css/scripts.css" />
 
-  <!-- JS Libraries (loaded before our scripts) -->
-  <script src="/vendor/marked.min.js"></script>
+  <!-- CodeMirror stays. editor-shim.js drives it and is the only JavaScript
+       the Rust UI keeps; both load before the module that calls into them. -->
   <script src="/vendor/simplemde.min.js"></script>
+  <script src="/js/editor-shim.js"></script>
 </head>
 <body>
-  <div id="app">
-    <!-- ── SIDEBAR ── -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="logo-icon"><span>P</span></div>
-        <span class="sidebar-title">PossessApp</span>
-      </div>
-      <button class="vault-btn" id="btn-vault">
-        <svg class="vault-btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        </svg>
-        <span class="vault-btn-name" id="vault-name">notes</span>
-        <span class="vault-btn-hint">Change</span>
-      </button>
-      <div class="sidebar-tools">
-        <div class="search-row">
-          <input type="search" id="file-search" spellcheck="false"
-                 placeholder="Search notes..." aria-label="Search notes" />
-        </div>
-        <div class="tool-row">
-          <button class="tool-btn" id="btn-new-note" title="New note">+ Note</button>
-          <button class="tool-btn" id="btn-new-folder" title="New folder">+ Folder</button>
-          <button class="tool-btn" id="btn-scripts" title="Python scripts">Scripts</button>
-        </div>
-      </div>
+  <!-- css/layout.css makes #app the flex row holding the sidebar and the main
+       content, so the shell mounts inside it rather than into <body>. -->
+  <div id="app"></div>
 
-      <nav id="file-tree"></nav>
-    </aside>
-
-    <!-- Drag handle: sidebar ↔ main content -->
-    <div class="resizer" id="sidebar-resizer" title="Drag to resize"></div>
-
-    <!-- ── MAIN CONTENT ── -->
-    <section class="main-content">
-      <div class="top-bar">
-        <span id="current-file-name">No file selected</span>
-        <div class="btn-group">
-          <button class="theme-btn" id="btn-theme" title="Switch theme"></button>
-          <button class="btn active" id="btn-edit" title="Edit Mode">Edit</button>
-          <button class="btn" id="btn-preview" title="Preview Mode">Preview</button>
-        </div>
-      </div>
-
-      <div class="viewport">
-        <textarea id="editor-container"></textarea>
-        <!-- Drag handle: editor ↔ preview, only visible in side-by-side -->
-        <div class="split-resizer" id="split-resizer" title="Drag to resize"></div>
-        <div id="preview-panel" class="markdown-preview"></div>
-      </div>
-    </section>
-  </div>
-
-  <!-- ── [[ AUTOCOMPLETE ── -->
-  <div class="link-complete" id="link-complete" hidden></div>
-
-  <!-- ── UNDO BAR ── -->
-  <div class="undo-bar" id="undo-bar" role="status" hidden>
-    <span class="undo-message" id="undo-message"></span>
-    <button class="btn active" id="undo-action">Undo</button>
-  </div>
-
-  <!-- ── SIDEBAR CONTEXT MENU ── -->
-  <div class="context-menu" id="context-menu" hidden></div>
-
-  <!-- ── SCRIPTS PANEL ── -->
-  <div class="modal-backdrop" id="scripts-modal" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="scripts-title">
-      <div class="modal-header">
-        <h2 id="scripts-title">Python scripts</h2>
-        <button class="modal-close" id="scripts-close" title="Close">&times;</button>
-      </div>
-
-      <div class="modal-body">
-        <p class="scripts-dir" id="scripts-dir"></p>
-        <div class="scripts-list" id="scripts-list"></div>
-
-        <div class="scripts-hooks-row" id="scripts-hooks-row" hidden>
-          <input type="checkbox" id="scripts-hooks" />
-          <label class="scripts-hooks-text" for="scripts-hooks">
-            Run <code>scripts/hooks/</code> after every save
-            <small>Off by default for each vault. Scripts run as you, with your
-            permissions — turn this on only for code you trust.</small>
-          </label>
-        </div>
-
-        <pre class="scripts-output" id="scripts-output"></pre>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn" id="scripts-done">Close</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── VAULT PICKER ── -->
-  <div class="modal-backdrop" id="vault-modal" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="vault-modal-title">
-      <div class="modal-header">
-        <h2 id="vault-modal-title">Select vault folder</h2>
-        <button class="modal-close" id="vault-close" title="Close">&times;</button>
-      </div>
-
-      <div class="modal-body">
-        <div class="vault-path-row">
-          <input type="text" id="vault-path-input" spellcheck="false"
-                 placeholder="Type or paste a folder path" />
-          <button class="btn" id="vault-go">Go</button>
-        </div>
-
-        <div class="vault-drives" id="vault-drives" hidden></div>
-        <div class="vault-list" id="vault-list"></div>
-        <p class="vault-error" id="vault-error" hidden></p>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn" id="vault-cancel">Cancel</button>
-        <button class="btn active" id="vault-select">Use this folder</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Application Scripts -->
-  <script src="/js/api.js"></script>
-  <script src="/js/assets.js"></script>
-  <script src="/js/sidebar.js"></script>
-  <script src="/js/editor.js"></script>
-  <script src="/js/resizer.js"></script>
-  <script src="/js/wikilinks.js"></script>
-  <script src="/js/linkcomplete.js"></script>
-  <script src="/js/images.js"></script>
-  <script src="/js/paste.js"></script>
-  <script src="/js/preview.js"></script>
-  <script src="/js/vault.js"></script>
-  <script src="/js/undo.js"></script>
-  <script src="/js/notes.js"></script>
-  <script src="/js/theme.js"></script>
-  <script src="/js/scripts.js"></script>
-  <script src="/js/app.js"></script>
+  <script type="module">
+    import init from '/pkg/possess_ui.js';
+    init();
+  </script>
 </body>
 </html>

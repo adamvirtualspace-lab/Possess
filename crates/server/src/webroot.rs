@@ -18,9 +18,8 @@ use axum::response::{IntoResponse, Response};
 /// question worth answering, so each lookup is confined to one of these.
 const SERVED_DIRS: &[&str] = &["css", "js", "vendor", "pkg"];
 
-/// The only files at the web root itself that are reachable: the JS app's page
-/// and the Rust UI's page.
-const SERVED_FILES: &[&str] = &["index.html", "next.html"];
+/// The only file at the web root itself that is reachable: the app's page.
+const SERVED_FILES: &[&str] = &["index.html"];
 
 /// Split a web-root path into its served directory and the path within it,
 /// rejecting anything that names neither a served file nor a served directory.
@@ -122,13 +121,11 @@ mod inner {
     struct Pkg;
 
     const INDEX: &[u8] = include_bytes!("../../../index.html");
-    const NEXT: &[u8] = include_bytes!("../../../next.html");
 
     pub fn read(path: &str) -> Option<Vec<u8>> {
         let (prefix, rest) = super::split_served(path)?;
         match (prefix, rest) {
             ("", "index.html") => Some(INDEX.to_vec()),
-            ("", "next.html") => Some(NEXT.to_vec()),
             ("css", _) => Css::get(rest).map(|f| f.data.into_owned()),
             ("js", _) => Js::get(rest).map(|f| f.data.into_owned()),
             ("vendor", _) => Vendor::get(rest).map(|f| f.data.into_owned()),
@@ -157,7 +154,6 @@ mod tests {
             split_served("vendor/simplemde.min.js"),
             Some(("vendor", "simplemde.min.js"))
         );
-        assert_eq!(split_served("next.html"), Some(("", "next.html")));
         assert_eq!(
             split_served("pkg/possess_ui_bg.wasm"),
             Some(("pkg", "possess_ui_bg.wasm"))
