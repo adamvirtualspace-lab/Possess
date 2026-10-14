@@ -1,9 +1,10 @@
 //! Browser storage, in the format the rest of the app already uses.
 //!
 //! Deliberately raw strings rather than JSON. The theme is read by an inline
-//! script before the WebAssembly loads, and both frontends share these keys
-//! while the port is in progress — a JSON-encoded `"dark"` arrives at that
-//! script with its quotes still attached and matches nothing.
+//! script before the WebAssembly loads — a JSON-encoded `"dark"` arrives at
+//! that script with its quotes still attached and matches nothing. These are
+//! also the keys the JavaScript frontend wrote, so settings made before the
+//! port survived it.
 //!
 //! Every accessor tolerates storage being unavailable: a private window throws
 //! on write, and blocked site data throws on read.

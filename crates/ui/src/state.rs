@@ -1,7 +1,7 @@
 //! The state the whole UI shares, and the operations that change it.
 //!
-//! This is `js/app.js` — its `App.state` plus the six `document` CustomEvents
-//! it used to coordinate modules (`file-selected`, `vault-changed`,
+//! This replaces the old `app.js` — its `App.state` plus the six `document`
+//! CustomEvents it used to coordinate modules (`file-selected`, `vault-changed`,
 //! `entry-renamed`, `entry-deleted`, `vault-mutated`, `note-loaded`). Signals
 //! replace the events: anything that reads `current_file` re-runs when it
 //! changes, so there is nothing to dispatch and nothing to subscribe to.

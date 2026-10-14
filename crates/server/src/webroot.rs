@@ -2,8 +2,8 @@
 //!
 //! Two backends behind one interface: with the `embed` feature the files are
 //! baked into the executable at compile time, so a release build ships as a
-//! single file. Without it they are read from disk, so editing app.js during
-//! development needs no rebuild.
+//! single file. Without it they are read from disk, so editing the stylesheets
+//! or the editor shim during development needs no rebuild.
 
 use crate::error::{AppError, AppResult};
 use axum::body::Body;
@@ -12,10 +12,11 @@ use axum::response::{IntoResponse, Response};
 
 /// The only directories reachable from the browser.
 ///
-/// The project directory also holds app.py, the config file and — by default —
-/// the vault itself, none of which are the browser's business. Serving a whole
-/// directory that happens to contain them is what makes "/js/../app.py" a
-/// question worth answering, so each lookup is confined to one of these.
+/// The project directory also holds the config file and — by default — the
+/// vault itself, neither of which is the browser's business. Serving a whole
+/// directory that happens to contain them is what makes
+/// "/js/../possess-config.json" a question worth answering, so each lookup is
+/// confined to one of these.
 const SERVED_DIRS: &[&str] = &["css", "js", "vendor", "pkg"];
 
 /// The only file at the web root itself that is reachable: the app's page.
@@ -47,8 +48,8 @@ pub fn version(path: &str) -> i64 {
 /// Serve a file out of the web root with revalidation forced.
 ///
 /// Browsers fall back to heuristic caching when no Cache-Control is sent, and
-/// can keep serving a stale app.js/editor.js from disk cache after we've edited
-/// it — even across a hard reload.
+/// can keep serving a stale stylesheet or shim from disk cache after we've
+/// edited it — even across a hard reload.
 pub async fn serve(path: &str) -> AppResult<Response> {
     let bytes = read(path).ok_or_else(|| AppError::not_found(format!("Not found: {path}")))?;
 
@@ -73,7 +74,8 @@ mod inner {
     use std::path::PathBuf;
 
     /// Resolve inside the file's own served directory, refusing anything that
-    /// climbs out of it — "/js/../app.py" resolves above js/ and is rejected.
+    /// climbs out of it — "/js/../possess-config.json" resolves above js/ and is
+    /// rejected.
     fn safe_join(path: &str) -> Option<PathBuf> {
         let (prefix, rest) = super::split_served(path)?;
         let base = vault::canonical(&vault::root_dir().join(prefix));
@@ -106,11 +108,8 @@ mod inner {
     #[folder = "../../js"]
     struct Js;
 
-    // The vendored editor's full source tree is not served; only the built
-    // bundles beside it are, which index.html is what actually loads.
     #[derive(Embed)]
     #[folder = "../../vendor"]
-    #[exclude = "simplemde-markdown-editor-fullrepo/*"]
     struct Vendor;
 
     // The Rust UI's build output. Run ./build-ui.sh before an embed build:
@@ -148,7 +147,10 @@ mod tests {
     #[test]
     fn accepts_the_served_directories_and_index() {
         assert_eq!(split_served("index.html"), Some(("", "index.html")));
-        assert_eq!(split_served("js/app.js"), Some(("js", "app.js")));
+        assert_eq!(
+            split_served("js/editor-shim.js"),
+            Some(("js", "editor-shim.js"))
+        );
         assert_eq!(split_served("css/main.css"), Some(("css", "main.css")));
         assert_eq!(
             split_served("vendor/simplemde.min.js"),
@@ -162,9 +164,8 @@ mod tests {
 
     #[test]
     fn rejects_anything_outside_them() {
-        // The project directory holds app.py, the config file and the default
-        // vault; none of them are reachable by naming a served directory first.
-        assert_eq!(split_served("app.py"), None);
+        // The project directory holds the config file and the default vault;
+        // neither is reachable by naming a served directory first.
         assert_eq!(split_served("possess-config.json"), None);
         assert_eq!(split_served("notes/private.md"), None);
         assert_eq!(split_served(""), None);
@@ -174,6 +175,9 @@ mod tests {
     fn a_traversal_is_left_for_the_path_resolver() {
         // split_served only picks the base; climbing out of it is caught by
         // resolve_in_vault, so these are accepted here and rejected there.
-        assert_eq!(split_served("js/../app.py"), Some(("js", "../app.py")));
+        assert_eq!(
+            split_served("js/../possess-config.json"),
+            Some(("js", "../possess-config.json"))
+        );
     }
 }

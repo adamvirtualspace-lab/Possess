@@ -6,7 +6,8 @@
 //!
 //! Request and response types come from `possess_common`, shared with the
 //! server, so a field renamed there fails this crate's build rather than
-//! silently returning `undefined` at runtime the way `js/api.js` would.
+//! silently returning `undefined` at runtime the way hand-written fetch
+//! wrappers would.
 
 // The client is written out in full ahead of the components that call it, so
 // the API surface lives in one place rather than growing a call at a time.

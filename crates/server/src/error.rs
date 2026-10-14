@@ -1,8 +1,9 @@
 //! The error shape the frontend expects.
 //!
-//! FastAPI puts its message in `{"detail": ...}` and `js/api.js` `_detail()`
-//! reads exactly that key to show "Not a folder: X" instead of a bare status
-//! code. Anything we return on an error path has to keep that shape.
+//! The message goes in `{"detail": ...}`, which is the key the UI's client
+//! reads to show "Not a folder: X" instead of a bare status code — the shape
+//! FastAPI used, kept because `crates/ui/src/api.rs` still expects it.
+//! Anything we return on an error path has to keep it.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};

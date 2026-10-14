@@ -22,16 +22,15 @@ cargo run
 
 A plain `cargo run` (without `--features embed`) reads `index.html`, `css/`,
 `js/`, `vendor/` and `pkg/` from disk, so editing them takes effect on reload
-with no rebuild.
+with no rebuild. The frontend is Rust compiled to WebAssembly, so changing it
+means re-running `./build-ui.sh`; `js/` holds one file, a thin shim over the
+CodeMirror editor, and `css/` is plain stylesheets — those two take effect on
+reload alone.
 
 The Rust UI is built separately by `./build-ui.sh`, which writes `pkg/`. An
 embed build reads that folder at compile time, so run it first — a stale `pkg/`
 ships a stale UI. It needs the `wasm32-unknown-unknown` target and
 `wasm-bindgen`; `wasm-opt` is used when present and skipped when not.
-
-While the port is in progress, `/` serves the original JavaScript frontend and
-`/next` serves the Rust one. Both talk to the same backend, so they can be
-compared directly.
 
 ```
 cargo test
@@ -54,11 +53,18 @@ starts running their code.
 | `POSSESS_HOST` | `127.0.0.1` | Loopback by default — the server has no authentication and can read and write files anywhere you point it. Set `0.0.0.0` only to deliberately expose it. |
 | `POSSESS_PORT` | `8000` | Port to listen on |
 | `POSSESS_PYTHON` | auto | Interpreter used for scripts |
-| `POSSESS_ROOT` | exe dir | Where `index.html`, `css/` and `js/` are read from in a non-embedded build |
+| `POSSESS_ROOT` | exe dir | Where `index.html`, `css/`, `js/`, `vendor/` and `pkg/` are read from in a non-embedded build |
 
-### about app.py
+### about the port
 
-`app.py` is the original Python backend, kept alongside the Rust one so the two
-can be compared behaviourally. The Rust server is a drop-in replacement: it
-serves the same frontend, unmodified, over the same API. It will be removed once
-the port has had some real use.
+PossessApp started as a FastAPI backend with a vanilla-JavaScript frontend. Both
+are now Rust: an axum server and a Leptos UI compiled to WebAssembly, built as
+one workspace and shipped as one binary. The original `app.py` was kept
+alongside the Rust server for a while so the two could be diffed response by
+response; once the Rust frontend reached parity it was removed, along with the
+JavaScript modules it served.
+
+Two things did not become Rust, deliberately. `js/editor-shim.js` wraps
+CodeMirror, which has no Rust equivalent worth the trade — it is the only
+JavaScript left. And the Scripts panel still runs your own Python files, because
+that is what the scripts in people's vaults are written in.
