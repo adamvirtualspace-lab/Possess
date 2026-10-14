@@ -5,18 +5,30 @@
 //! reaches parity.
 
 mod api;
+mod context_menu;
 mod editor;
 mod inline_edit;
 mod linkcomplete;
+mod modal;
+mod notes;
 mod preview;
+mod scripts;
 mod sidebar;
 mod state;
+mod theme;
+mod undo;
+mod vault;
 
 use editor::{Editor, Handlers};
+use context_menu::ContextMenu;
 use linkcomplete::LinkComplete;
 use leptos::prelude::*;
 use possess_markdown::{assets, render, RenderContext};
+use scripts::ScriptsPanel;
 use sidebar::Sidebar;
+use theme::ThemeButton;
+use undo::UndoBar;
+use vault::VaultPicker;
 use state::{AppState, ViewMode};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -70,6 +82,7 @@ fn App() -> impl IntoView {
         editor::editor().on_change(move || for_change.on_edit());
 
         preview::wire(state.clone());
+        theme::follow_system();
 
         // Load the vault's notes, then open the first one so there is
         // something on screen. The real sidebar replaces this list.
@@ -118,6 +131,10 @@ fn Shell() -> impl IntoView {
     view! {
         <Sidebar />
         <LinkComplete />
+        <ContextMenu />
+        <UndoBar />
+        <VaultPicker />
+        <ScriptsPanel />
 
         <section class="main-content">
             <div class="top-bar">
@@ -125,6 +142,7 @@ fn Shell() -> impl IntoView {
                     {move || current.get().unwrap_or_else(|| "No file selected".into())}
                 </span>
                 <div class="btn-group">
+                    <ThemeButton />
                     <button
                         class="btn"
                         class:active=move || mode.get() == ViewMode::Edit

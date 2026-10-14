@@ -92,9 +92,17 @@ pub struct AppState {
     pub search_query: RwSignal<String>,
     pub search_results: RwSignal<Vec<possess_common::SearchResult>>,
     pub vault_name: RwSignal<String>,
+    /// Absolute path of the open vault, which the picker starts from.
+    pub vault_path: RwSignal<String>,
+    pub vault_open: RwSignal<bool>,
+    pub scripts_open: RwSignal<bool>,
     pub preview_html: RwSignal<String>,
     /// Set while the editor holds changes that have not been saved.
     pub dirty: RwSignal<bool>,
+    /// The undo offer currently on screen, if any.
+    pub undo: RwSignal<Option<crate::undo::Offer>>,
+    /// What the context menu is open for, if it is open.
+    pub context_menu: RwSignal<Option<crate::context_menu::Target>>,
     /// Notes offered by the `[[` autocomplete; empty means the list is closed.
     pub complete_matches: RwSignal<Vec<String>>,
     /// Which of them is selected.
@@ -106,6 +114,7 @@ struct Timers {
     save: Debounce,
     rerender: Debounce,
     search: Debounce,
+    undo: Debounce,
 }
 
 thread_local! {
@@ -130,8 +139,13 @@ impl AppState {
             search_query: RwSignal::new(String::new()),
             search_results: RwSignal::new(Vec::new()),
             vault_name: RwSignal::new(String::new()),
+            vault_path: RwSignal::new(String::new()),
+            vault_open: RwSignal::new(false),
+            scripts_open: RwSignal::new(false),
             preview_html: RwSignal::new(String::new()),
             dirty: RwSignal::new(false),
+            undo: RwSignal::new(None),
+            context_menu: RwSignal::new(None),
             complete_matches: RwSignal::new(Vec::new()),
             complete_active: RwSignal::new(0),
         }
@@ -160,6 +174,11 @@ impl AppState {
                 }
             });
         }));
+    }
+
+    /// Withdraw an undo offer after `delay_ms`, replacing any pending timeout.
+    pub fn undo_debounce(&self, delay_ms: i32, task: impl FnOnce() + 'static) {
+        TIMERS.with(|timers| timers.undo.schedule(delay_ms, task));
     }
 
     /// Run `task` once the search box has been quiet for `delay_ms`.
@@ -197,6 +216,7 @@ impl AppState {
         let tree = tree::build(&folders.folders);
 
         self.vault_name.set(vault.name);
+        self.vault_path.set(vault.path);
         // Derived from the tree rather than built twice, so the sidebar and
         // wiki-link resolution can never disagree about what exists.
         self.notes.set(tree.note_paths());

@@ -1,9 +1,26 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PossessApp</title>
+
+  <!-- Theme, resolved before first paint to avoid a flash of the wrong one.
+       Has to be inline and synchronous: the WebAssembly has not loaded yet. -->
+  <script>
+    (function () {
+      var theme;
+      try {
+        theme = localStorage.getItem('possess-theme');
+      } catch (err) { /* storage blocked — fall through to the OS preference */ }
+
+      if (!theme) {
+        theme = window.matchMedia('(prefers-color-scheme: light)').matches
+          ? 'light' : 'dark';
+      }
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
 
   <!-- The same stylesheets the JS app uses: this port changes the language,
        not the design, so every rule carries over unchanged. -->

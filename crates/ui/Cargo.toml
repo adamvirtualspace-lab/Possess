@@ -27,6 +27,6 @@ features = [
   "HtmlTextAreaElement", "DomTokenList", "CssStyleDeclaration", "DomRect",
   "Event", "EventTarget", "MouseEvent", "KeyboardEvent", "CustomEvent",
   "CustomEventInit", "File", "FileReader", "Blob", "Node", "NodeList",
-  "ScrollIntoViewOptions", "ScrollLogicalPosition",
+  "ScrollIntoViewOptions", "ScrollLogicalPosition", "MediaQueryList",
   "Storage", "console",
 ]

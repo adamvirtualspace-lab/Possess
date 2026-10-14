@@ -10,6 +10,8 @@
 //! - Indentation is inline rather than nested CSS selectors, because a vault
 //!   nests arbitrarily deep and a stylesheet cannot follow it down.
 
+use crate::context_menu;
+use crate::notes;
 use crate::state::{AppState, SEARCH_MS};
 use leptos::prelude::*;
 use possess_common::tree::{NoteRef, TreeNode};
@@ -31,6 +33,11 @@ pub fn Sidebar() -> impl IntoView {
     let query = state.search_query;
     let tree = state.tree;
 
+    let open_vault = {
+        let state = state.clone();
+        move |_| state.vault_open.set(true)
+    };
+
     view! {
         <aside class="sidebar">
             <div class="sidebar-header">
@@ -38,7 +45,7 @@ pub fn Sidebar() -> impl IntoView {
                 <span class="sidebar-title">"PossessApp"</span>
             </div>
 
-            <button class="vault-btn" id="btn-vault">
+            <button class="vault-btn" id="btn-vault" on:click=open_vault>
                 <svg class="vault-btn-icon" viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                 </svg>
@@ -66,6 +73,7 @@ fn SearchBox() -> impl IntoView {
     let state = expect_context::<AppState>();
     let query = state.search_query;
 
+    let for_tools = state.clone();
     let run = move |text: String| {
         query.set(text.clone());
         if text.is_empty() {
@@ -117,6 +125,31 @@ fn SearchBox() -> impl IntoView {
         run(String::new());
     };
 
+    // New entries land beside the open note, which is nearly always what is
+    // meant; with nothing open they go to the vault root.
+    let new_note = {
+        let state = for_tools.clone();
+        move |_| {
+            let state = state.clone();
+            leptos::task::spawn_local(async move {
+                notes::create_note(&state, &notes::current_folder(&state)).await;
+            });
+        }
+    };
+    let new_folder = {
+        let state = for_tools.clone();
+        move |_| {
+            let state = state.clone();
+            leptos::task::spawn_local(async move {
+                notes::create_folder(&state, &notes::current_folder(&state)).await;
+            });
+        }
+    };
+    let open_scripts = {
+        let state = for_tools.clone();
+        move |_| state.scripts_open.set(true)
+    };
+
     view! {
         <div class="sidebar-tools">
             <div class="search-row">
@@ -130,12 +163,16 @@ fn SearchBox() -> impl IntoView {
                     on:keydown=on_keydown
                 />
             </div>
-            // Inert until file management lands; present so the sidebar is the
-            // shape the stylesheet expects.
             <div class="tool-row">
-                <button class="tool-btn" id="btn-new-note" title="New note">"+ Note"</button>
-                <button class="tool-btn" id="btn-new-folder" title="New folder">"+ Folder"</button>
-                <button class="tool-btn" id="btn-scripts" title="Python scripts">"Scripts"</button>
+                <button class="tool-btn" id="btn-new-note" title="New note" on:click=new_note>
+                    "+ Note"
+                </button>
+                <button class="tool-btn" id="btn-new-folder" title="New folder" on:click=new_folder>
+                    "+ Folder"
+                </button>
+                <button class="tool-btn" id="btn-scripts" title="Python scripts" on:click=open_scripts>
+                    "Scripts"
+                </button>
             </div>
         </div>
     }
@@ -177,6 +214,15 @@ fn ResultItem(result: SearchResult) -> impl IntoView {
     let mine = result.path.clone();
     let snippet = result.snippet.clone();
 
+    let on_contextmenu = {
+        let state = state.clone();
+        let path = result.path.clone();
+        let name = result.name.clone();
+        move |event: web_sys::MouseEvent| {
+            context_menu::open_for(&state, &event, "note", &path, &name);
+        }
+    };
+
     view! {
         <div
             class="file-item search-result"
@@ -184,6 +230,7 @@ fn ResultItem(result: SearchResult) -> impl IntoView {
             data-path=result.path.clone()
             title=result.path.clone()
             on:click=move |_| open(&state, &path)
+            on:contextmenu=on_contextmenu
         >
             <div class="search-result-name">{result.name.clone()}</div>
             <Show when=move || !snippet.is_empty()>
@@ -242,6 +289,15 @@ fn Folder(node: TreeNode, depth: usize) -> impl IntoView {
         });
     };
 
+    let on_contextmenu = {
+        let state = state.clone();
+        let path = node.path.clone();
+        let name = node.name.clone();
+        move |event: web_sys::MouseEvent| {
+            context_menu::open_for(&state, &event, "folder", &path, &name);
+        }
+    };
+
     let children = RwSignal::new(node.clone());
 
     view! {
@@ -253,6 +309,7 @@ fn Folder(node: TreeNode, depth: usize) -> impl IntoView {
                 title=node.path.clone()
                 data-path=node.path.clone()
                 on:click=on_click
+                on:contextmenu=on_contextmenu
             >
                 <span class="arrow">"\u{25BC}"</span>
                 <span class="folder-name">{node.name.clone()}</span>
@@ -272,6 +329,15 @@ fn Note(note: NoteRef, depth: usize) -> impl IntoView {
     let path = note.path.clone();
     let mine = note.path.clone();
 
+    let on_contextmenu = {
+        let state = state.clone();
+        let path = note.path.clone();
+        let name = note.name.clone();
+        move |event: web_sys::MouseEvent| {
+            context_menu::open_for(&state, &event, "note", &path, &name);
+        }
+    };
+
     view! {
         <div
             class="file-item"
@@ -283,6 +349,7 @@ fn Note(note: NoteRef, depth: usize) -> impl IntoView {
             data-path=note.path.clone()
             title=note.path.clone()
             on:click=move |_| open(&state, &path)
+            on:contextmenu=on_contextmenu
         >
             {note.name.clone()}
         </div>
