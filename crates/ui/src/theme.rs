@@ -5,7 +5,7 @@
 //! resolves it before first paint, so this only wires the button and keeps its
 //! label honest.
 
-use gloo_storage::{LocalStorage, Storage};
+use crate::store;
 use leptos::prelude::*;
 
 const KEY: &str = "possess-theme";
@@ -63,8 +63,8 @@ pub fn ThemeButton() -> impl IntoView {
         apply(next);
         theme.set(next);
         // A private window throws on write; the theme still holds for this
-        // session, so the failure is deliberately ignored.
-        let _ = LocalStorage::set(KEY, next.as_str());
+        // session, so the failure is swallowed in `store`.
+        store::set(KEY, next.as_str());
     };
 
     let label = move || format!("Switch to {} theme", theme.get().other().as_str());
@@ -89,7 +89,7 @@ pub fn follow_system() {
 
     let handler = wasm_bindgen::closure::Closure::wrap(Box::new(move |_: web_sys::Event| {
         // An explicit choice wins; this only tracks the OS until one is made.
-        if LocalStorage::get::<String>(KEY).is_ok() {
+        if store::get(KEY).is_some() {
             return;
         }
         let matches = web_sys::window()

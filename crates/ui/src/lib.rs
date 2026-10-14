@@ -12,9 +12,11 @@ mod linkcomplete;
 mod modal;
 mod notes;
 mod preview;
+mod resizer;
 mod scripts;
 mod sidebar;
 mod state;
+mod store;
 mod theme;
 mod undo;
 mod vault;
@@ -82,6 +84,7 @@ fn App() -> impl IntoView {
         editor::editor().on_change(move || for_change.on_edit());
 
         preview::wire(state.clone());
+        resizer::init();
         theme::follow_system();
 
         // Load the vault's notes, then open the first one so there is
@@ -136,6 +139,9 @@ fn Shell() -> impl IntoView {
         <VaultPicker />
         <ScriptsPanel />
 
+        // Drag handle: sidebar <-> main content.
+        <div class="resizer" id="sidebar-resizer" title="Drag to resize"></div>
+
         <section class="main-content">
             <div class="top-bar">
                 <span id="current-file-name">
@@ -165,6 +171,8 @@ fn Shell() -> impl IntoView {
                 // once, with no reactive children, so Leptos never touches the
                 // DOM SimpleMDE puts inside it.
                 <div id="editor-host"></div>
+                // Drag handle: editor <-> preview, only visible side by side.
+                <div class="split-resizer" id="split-resizer" title="Drag to resize"></div>
                 <div
                     id="preview-panel"
                     class="markdown-preview"
