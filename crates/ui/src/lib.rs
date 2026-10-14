@@ -8,11 +8,13 @@ mod api;
 mod editor;
 mod inline_edit;
 mod preview;
+mod sidebar;
 mod state;
 
 use editor::{Editor, Handlers};
 use leptos::prelude::*;
 use possess_markdown::{assets, render, RenderContext};
+use sidebar::Sidebar;
 use state::{AppState, ViewMode};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -77,7 +79,7 @@ fn App() -> impl IntoView {
             }
             let first = state.notes.get_untracked().first().cloned();
             if let Some(first) = first {
-                if let Err(err) = state.open(&first).await {
+                if let Err(err) = state.open_and_reveal(&first).await {
                     leptos::logging::error!("Could not open note: {err}");
                 }
             }
@@ -91,18 +93,6 @@ fn App() -> impl IntoView {
 #[component]
 fn Shell() -> impl IntoView {
     let state = expect_context::<AppState>();
-
-    let open_note = {
-        let state = state.clone();
-        move |path: String| {
-            let state = state.clone();
-            leptos::task::spawn_local(async move {
-                if let Err(err) = state.open(&path).await {
-                    leptos::logging::error!("Could not open note: {err}");
-                }
-            });
-        }
-    };
 
     let set_mode = {
         let state = state.clone();
@@ -119,46 +109,12 @@ fn Shell() -> impl IntoView {
     };
     let set_edit = set_mode.clone();
 
-    let notes = state.notes;
     let current = state.current_file;
-    let vault = state.vault_name;
     let mode = state.view_mode;
     let html = state.preview_html;
 
     view! {
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <div class="logo-icon"><span>"P"</span></div>
-                <span class="sidebar-title">"PossessApp"</span>
-            </div>
-            <button class="vault-btn">
-                <span class="vault-btn-name">{move || vault.get()}</span>
-            </button>
-            <nav id="file-tree">
-                <For
-                    each=move || notes.get()
-                    key=|path| path.clone()
-                    children=move |path| {
-                        let open = open_note.clone();
-                        let clicked = path.clone();
-                        let mine = path.clone();
-                        let label = path.rsplit('/').next().unwrap_or(&path).to_string();
-                        view! {
-                            <div
-                                class="file-item"
-                                class:active=move || {
-                                    current.get().as_deref() == Some(mine.as_str())
-                                }
-                                title=path.clone()
-                                on:click=move |_| open(clicked.clone())
-                            >
-                                {label}
-                            </div>
-                        }
-                    }
-                />
-            </nav>
-        </aside>
+        <Sidebar />
 
         <section class="main-content">
             <div class="top-bar">

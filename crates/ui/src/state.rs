@@ -11,12 +11,20 @@ use crate::editor::{editor, Editor};
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use possess_common::tree::{self, TreeNode};
 use possess_markdown::{render, RenderContext};
 use std::cell::Cell;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 /// How long the editor sits idle before the note is written back.
 pub const AUTOSAVE_MS: i32 = 5_000;
+
+/// How long after the last keystroke in the search box the vault is searched.
+///
+/// Search walks every note, so a request per keystroke would have long queries
+/// racing each other on a large vault.
+pub const SEARCH_MS: i32 = 200;
 
 /// How long after the last keystroke the preview is re-rendered.
 ///
@@ -73,6 +81,16 @@ pub struct AppState {
     pub view_mode: RwSignal<ViewMode>,
     /// Every note in the vault, which is what wiki links resolve against.
     pub notes: RwSignal<Vec<String>>,
+    /// The vault's folders and notes, as the sidebar renders them.
+    pub tree: RwSignal<TreeNode>,
+    /// Paths of the folders currently open in the sidebar.
+    ///
+    /// Held here rather than in the DOM, which is what lets an open folder stay
+    /// open when the tree is rebuilt after a create or a rename.
+    pub expanded: RwSignal<HashSet<String>>,
+    /// What is typed in the search box; empty means show the tree.
+    pub search_query: RwSignal<String>,
+    pub search_results: RwSignal<Vec<possess_common::SearchResult>>,
     pub vault_name: RwSignal<String>,
     pub preview_html: RwSignal<String>,
     /// Set while the editor holds changes that have not been saved.
@@ -83,6 +101,7 @@ pub struct AppState {
 struct Timers {
     save: Debounce,
     rerender: Debounce,
+    search: Debounce,
 }
 
 thread_local! {
@@ -102,6 +121,10 @@ impl AppState {
             current_mtime: RwSignal::new(0.0),
             view_mode: RwSignal::new(ViewMode::Edit),
             notes: RwSignal::new(Vec::new()),
+            tree: RwSignal::new(TreeNode::default()),
+            expanded: RwSignal::new(HashSet::new()),
+            search_query: RwSignal::new(String::new()),
+            search_results: RwSignal::new(Vec::new()),
             vault_name: RwSignal::new(String::new()),
             preview_html: RwSignal::new(String::new()),
             dirty: RwSignal::new(false),
@@ -133,6 +156,11 @@ impl AppState {
         }));
     }
 
+    /// Run `task` once the search box has been quiet for `delay_ms`.
+    pub fn search_debounce(&self, delay_ms: i32, task: impl FnOnce() + 'static) {
+        TIMERS.with(|timers| timers.search.schedule(delay_ms, task));
+    }
+
     /// The page's editor, which lives outside this struct so that `AppState`
     /// stays `Send` and can be shared through Leptos context.
     pub fn editor(&self) -> Rc<Editor> {
@@ -160,22 +188,26 @@ impl AppState {
         let vault = api::get_vault().await?;
         let folders = api::list_folders(None).await?;
 
-        // The flat map the server returns is keyed by folder; flatten it to the
-        // vault-relative paths everything else deals in.
-        let mut notes = Vec::new();
-        for (folder, entries) in &folders.folders {
-            for entry in entries {
-                notes.push(if folder == "." {
-                    entry.0.clone()
-                } else {
-                    format!("{folder}/{}", entry.0)
-                });
-            }
-        }
-        notes.sort();
+        let tree = tree::build(&folders.folders);
 
         self.vault_name.set(vault.name);
-        self.notes.set(notes);
+        // Derived from the tree rather than built twice, so the sidebar and
+        // wiki-link resolution can never disagree about what exists.
+        self.notes.set(tree.note_paths());
+        self.tree.set(tree);
+        Ok(())
+    }
+
+    /// Open a note, and open the folders on the way down to it.
+    ///
+    /// The data-level equivalent of walking up the DOM removing `collapsed`:
+    /// a note reached from search or a wiki link should be visible in the tree,
+    /// not hidden inside a folder that happens to be shut.
+    pub async fn open_and_reveal(&self, path: &str) -> Result<(), String> {
+        self.open(path).await?;
+        self.expanded.update(|open| {
+            open.extend(tree::ancestors(path));
+        });
         Ok(())
     }
 
