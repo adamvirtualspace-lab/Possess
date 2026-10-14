@@ -25,6 +25,7 @@ version = "0.3"
 features = [
   "Document", "Window", "Element", "HtmlElement", "HtmlInputElement",
   "HtmlTextAreaElement", "DomTokenList", "CssStyleDeclaration", "DomRect",
-  "Event", "MouseEvent", "KeyboardEvent", "CustomEvent", "CustomEventInit",
+  "Event", "EventTarget", "MouseEvent", "KeyboardEvent", "CustomEvent",
+  "CustomEventInit", "File", "FileReader", "Blob", "Node", "NodeList",
   "Storage", "console",
 ]
