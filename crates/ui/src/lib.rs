@@ -66,6 +66,7 @@ fn App() -> impl IntoView {
     let state = AppState::new();
     provide_context(state.clone());
     track_note_context(state.clone());
+    state.remember_expanded();
 
     // Deferred to an effect because the editor is built into an element the
     // shell renders, which does not exist until after this view is mounted.

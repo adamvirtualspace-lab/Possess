@@ -27,3 +27,25 @@ pub fn get_f64(key: &str) -> Option<f64> {
 pub fn set_f64(key: &str, value: f64) {
     set(key, &value.to_string());
 }
+
+/// A stored set of paths.
+///
+/// One path per line, because that is the one character a path cannot contain
+/// on any platform the app runs on — and keeping it raw means a value can be
+/// read straight out of the browser's storage inspector.
+pub fn get_lines(key: &str) -> Vec<String> {
+    get(key)
+        .map(|stored| {
+            stored
+                .lines()
+                .filter(|line| !line.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn set_lines(key: &str, values: impl IntoIterator<Item = String>) {
+    let joined: Vec<String> = values.into_iter().collect();
+    set(key, &joined.join("\n"));
+}

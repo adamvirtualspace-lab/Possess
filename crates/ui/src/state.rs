@@ -20,6 +20,9 @@ use std::rc::Rc;
 /// How long the editor sits idle before the note is written back.
 pub const AUTOSAVE_MS: i32 = 5_000;
 
+/// Where the open folders are remembered between visits.
+const EXPANDED_KEY: &str = "possess:expanded-folders";
+
 /// How long after the last keystroke in the search box the vault is searched.
 ///
 /// Search walks every note, so a request per keystroke would have long queries
@@ -86,7 +89,8 @@ pub struct AppState {
     /// Paths of the folders currently open in the sidebar.
     ///
     /// Held here rather than in the DOM, which is what lets an open folder stay
-    /// open when the tree is rebuilt after a create or a rename.
+    /// open when the tree is rebuilt after a create or a rename — and, stored
+    /// by `remember_expanded`, across a reload.
     pub expanded: RwSignal<HashSet<String>>,
     /// What is typed in the search box; empty means show the tree.
     pub search_query: RwSignal<String>,
@@ -135,7 +139,7 @@ impl AppState {
             view_mode: RwSignal::new(ViewMode::Edit),
             notes: RwSignal::new(Vec::new()),
             tree: RwSignal::new(TreeNode::default()),
-            expanded: RwSignal::new(HashSet::new()),
+            expanded: RwSignal::new(crate::store::get_lines(EXPANDED_KEY).into_iter().collect()),
             search_query: RwSignal::new(String::new()),
             search_results: RwSignal::new(Vec::new()),
             vault_name: RwSignal::new(String::new()),
@@ -149,6 +153,21 @@ impl AppState {
             complete_matches: RwSignal::new(Vec::new()),
             complete_active: RwSignal::new(0),
         }
+    }
+
+    /// Write the open folders back to storage whenever they change.
+    ///
+    /// Separate from `new` so the constructor stays free of effects: this needs
+    /// a reactive owner, which the root component has and a bare `new` call
+    /// would not. The set is sorted on the way out so the stored value does not
+    /// churn with the hash order.
+    pub fn remember_expanded(&self) {
+        let expanded = self.expanded;
+        Effect::new(move |_| {
+            let mut open: Vec<String> = expanded.get().into_iter().collect();
+            open.sort();
+            crate::store::set_lines(EXPANDED_KEY, open);
+        });
     }
 
     /// The editor changed. Mark the note dirty and set both timers running.

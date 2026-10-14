@@ -6,7 +6,7 @@
 //! - Which folders are open lives in a signal, not in the DOM. The JavaScript
 //!   this replaces rebuilt the tree with `innerHTML = ''`, so every folder you
 //!   had open collapsed whenever anything was created or renamed. Here the set
-//!   outlives the rebuild.
+//!   outlives the rebuild, and is stored, so it outlives a reload too.
 //! - Indentation is inline rather than nested CSS selectors, because a vault
 //!   nests arbitrarily deep and a stylesheet cannot follow it down.
 
