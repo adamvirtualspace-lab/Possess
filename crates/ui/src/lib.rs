@@ -1,8 +1,7 @@
 //! PossessApp browser UI.
 //!
-//! Served at /next while the original JS frontend keeps serving /, so the two
-//! can be compared side by side against the same backend until this one
-//! reaches parity.
+//! Compiled to WebAssembly and served at /, where it replaced the original
+//! JavaScript frontend once it reached parity with it.
 
 mod api;
 mod context_menu;
@@ -67,6 +66,7 @@ fn App() -> impl IntoView {
     let state = AppState::new();
     provide_context(state.clone());
     track_note_context(state.clone());
+    state.remember_expanded();
 
     // Deferred to an effect because the editor is built into an element the
     // shell renders, which does not exist until after this view is mounted.

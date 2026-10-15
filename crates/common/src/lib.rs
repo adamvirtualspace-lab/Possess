@@ -1,15 +1,15 @@
 //! The API contract between the PossessApp server and its UI.
 //!
 //! Both sides depend on this crate, so a field renamed here stops compiling on
-//! whichever side has not caught up. The hand-written fetch wrappers in
-//! `js/api.js` could only fail at runtime, in the browser, on the one code path
+//! whichever side has not caught up. The hand-written fetch wrappers this
+//! replaced could only fail at runtime, in the browser, on the one code path
 //! that happened to touch the changed field.
 //!
 //! Serialization is exact on purpose: these types reproduce the JSON the
 //! original FastAPI backend emitted, field for field. Where a field was absent
 //! rather than null it is `skip_serializing_if`, and where it was null it is a
-//! plain `Option` — the difference is observable to the client and is covered by
-//! the differential test.
+//! plain `Option` — the difference is observable to the client, and the two
+//! backends were diffed response by response while both still existed.
 
 pub mod tree;
 
