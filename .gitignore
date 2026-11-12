@@ -17,3 +17,6 @@ possess-config.json
 .DS_Store
 Thumbs.db
 /.claude
+
+# Python bytecode from tests/browser
+__pycache__/
