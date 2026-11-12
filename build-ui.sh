@@ -9,7 +9,14 @@ cd "$(dirname "$0")"
 
 PROFILE="${1:-release}"
 OUT="pkg"
-WASM="target/wasm32-unknown-unknown/${PROFILE}/possess_ui.wasm"
+
+# Ask cargo where it builds rather than assuming ./target: CARGO_TARGET_DIR or
+# build.target-dir in a cargo config move it. Backslashes come escaped in the
+# JSON on Windows; forward slashes work in Git Bash and everywhere else.
+TARGET_DIR="$(cargo metadata --format-version 1 --no-deps \
+    | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p' \
+    | sed 's/\\\\/\//g')"
+WASM="${TARGET_DIR}/wasm32-unknown-unknown/${PROFILE}/possess_ui.wasm"
 
 echo "[build-ui] compiling (${PROFILE})"
 if [ "$PROFILE" = "release" ]; then
