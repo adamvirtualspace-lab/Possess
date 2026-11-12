@@ -288,7 +288,18 @@ impl AppState {
     /// The data-level equivalent of walking up the DOM removing `collapsed`:
     /// a note reached from search or a wiki link should be visible in the tree,
     /// not hidden inside a folder that happens to be shut.
+    ///
+    /// Whatever was typed into the note being left is saved first. Without
+    /// that, switching notes inside the autosave delay dropped the edit: the
+    /// pending save was cancelled along with the note. If that save fails the
+    /// switch does not happen, so the edit stays on screen rather than being
+    /// thrown away. `open` itself does not do this, because it is also how a
+    /// note is reloaded after a script rewrote it, and saving there would put
+    /// the editor's copy back over the script's.
     pub async fn open_and_reveal(&self, path: &str) -> Result<(), String> {
+        if self.current_file.get_untracked().as_deref() != Some(path) {
+            self.save_now().await?;
+        }
         self.open(path).await?;
         self.expanded.update(|open| {
             open.extend(tree::ancestors(path));

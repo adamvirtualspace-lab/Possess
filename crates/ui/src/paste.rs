@@ -38,11 +38,19 @@ pub fn insert(state: &AppState, file: web_sys::File) {
             Err(err) => Err(err),
         };
 
-        // The user may have opened another note while this was in flight. The
-        // placeholder went with the old one, so there is nothing here to swap.
+        // The user may have opened another note while this was in flight.
+        // Switching saved the old one, placeholder and all, so the swap is made
+        // in the file on disk instead of in the editor.
         if state.current_file.get_untracked().as_deref() != Some(note.as_str()) {
-            if let Ok(saved) = &uploaded {
-                state.warn(format!("Image saved to {}, but its note was closed first.", saved.path));
+            let replacement = match &uploaded {
+                Ok(saved) => format!("![]({})", saved.markdown),
+                Err(_) => String::new(),
+            };
+            if let Err(err) = replace_on_disk(&note, &token, &replacement).await {
+                leptos::logging::error!("Could not update {note}: {err}");
+            }
+            if let Err(err) = uploaded {
+                state.warn(err);
             }
             return;
         }
@@ -79,6 +87,15 @@ async fn read_base64(file: &web_sys::File) -> Result<String, String> {
         .ok_or("No window to encode the image in")?
         .btoa(&binary)
         .map_err(|_| "Could not encode the pasted image".to_string())
+}
+
+/// Swap the placeholder in a note that is no longer open.
+async fn replace_on_disk(note: &str, token: &str, replacement: &str) -> Result<(), String> {
+    let file = crate::api::get_file(note).await?;
+    if file.content.contains(token) {
+        crate::api::save_file(note, &file.content.replacen(token, replacement, 1)).await?;
+    }
+    Ok(())
 }
 
 /// Swap the placeholder for `replacement` wherever it has ended up.
