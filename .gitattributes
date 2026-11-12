@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Shared with Obsessed: byte-for-byte copies, and the parser's round-trip
+# tests compare bytes. Never convert their line endings on checkout.
+SYNTAX.md text eol=lf
+sample-vault/** text eol=lf
