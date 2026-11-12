@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to a PR supersedes the run for the previous one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Tests and lints. Linux is the main runner because the vault's symlink
+  # escape test is #[cfg(unix)]: Windows silently skips it.
+  check:
+    name: Test + clippy (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
+      - name: clippy (native)
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: clippy (wasm32, UI)
+        run: cargo clippy -p possess-ui --all-targets --target wasm32-unknown-unknown --locked -- -D warnings
+
+  # Paths, drive letters and dunce canonicalisation only get exercised here.
+  test-windows:
+    name: Test (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
+
+  # The real deliverable: the UI built to wasm, embedded in one binary, then
+  # driven in a browser.
+  build:
+    name: Embed build + browser smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/ui-tools
+      - run: ./build-ui.sh
+      - run: cargo build --release --features embed --locked -p possess
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Playwright
+        run: |
+          pip install -r tests/browser/requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Browser smoke test
+        run: python tests/browser/smoke.py --binary target/release/possess --out smoke-out
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: smoke-out/
+          if-no-files-found: ignore

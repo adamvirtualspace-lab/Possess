@@ -1,0 +1,26 @@
+name: UI build tools
+description: >
+  Install wasm-bindgen (at exactly the version in Cargo.lock, which the CLI
+  requires) and binaryen's wasm-opt, so ./build-ui.sh can run.
+
+runs:
+  using: composite
+  steps:
+    - name: Read wasm-bindgen version from Cargo.lock
+      id: wb
+      shell: bash
+      run: |
+        version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print; exit }' Cargo.lock)
+        test -n "$version"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+    - uses: taiki-e/install-action@v2
+      with:
+        tool: wasm-bindgen@${{ steps.wb.outputs.version }}
+    - name: Install wasm-opt (binaryen)
+      shell: bash
+      env:
+        BINARYEN: version_119
+      run: |
+        curl -sSfL "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN}/binaryen-${BINARYEN}-x86_64-linux.tar.gz" \
+          | tar -xz -C "$RUNNER_TEMP"
+        echo "$RUNNER_TEMP/binaryen-${BINARYEN}/bin" >> "$GITHUB_PATH"
