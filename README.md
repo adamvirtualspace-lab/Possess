@@ -36,6 +36,27 @@ ships a stale UI. It needs the `wasm32-unknown-unknown` target and
 cargo test
 ```
 
+CI (`.github/workflows/ci.yml`) runs on every PR: tests on Linux and Windows,
+clippy on native and wasm32 with warnings as errors, the UI and embed builds,
+and a browser smoke test against the built binary. To run that test locally:
+
+```
+pip install -r tests/browser/requirements.txt
+python -m playwright install chromium
+python tests/browser/smoke.py --binary target/release/possess
+```
+
+It seeds a throwaway vault, drives the real UI and saves screenshots to
+`target/smoke-out/`. Pass `--channel msedge` or `--channel chrome` to use an installed
+browser instead, e.g. where Windows blocks Playwright's own Chromium.
+
+### releases
+
+Pushing a tag like `v0.2.0` runs `.github/workflows/release.yml`, which builds
+single-file binaries for Linux (static musl), Windows and macOS (universal),
+starts each one to check it serves the embedded UI, and publishes them with
+checksums as a GitHub release.
+
 ### scripts
 
 The Scripts panel runs your own Python files against the vault, so Python is
@@ -53,7 +74,7 @@ starts running their code.
 | `POSSESS_HOST` | `127.0.0.1` | Loopback by default — the server has no authentication and can read and write files anywhere you point it. Set `0.0.0.0` only to deliberately expose it. |
 | `POSSESS_PORT` | `8000` | Port to listen on |
 | `POSSESS_PYTHON` | auto | Interpreter used for scripts |
-| `POSSESS_ROOT` | exe dir | Where `index.html`, `css/`, `js/`, `vendor/` and `pkg/` are read from in a non-embedded build |
+| `POSSESS_ROOT` | exe dir | Where `possess-config.json` and the default vault (`notes/`) live, and, in a non-embedded build, where `index.html`, `css/`, `js/`, `vendor/` and `pkg/` are read from |
 
 ### about the port
 

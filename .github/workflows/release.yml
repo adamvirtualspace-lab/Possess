@@ -1,0 +1,157 @@
+name: Release
+
+# Pushing a tag like v0.2.0 builds single-file binaries for Windows, Linux
+# and macOS and publishes them as a GitHub release.
+#
+# A PR that edits this file runs the same builds without publishing, so the
+# release path is tested before anyone relies on it.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: [".github/workflows/release.yml", ".github/actions/**"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The wasm UI is the same on every platform: build it once.
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/ui-tools
+      - run: ./build-ui.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg
+          path: pkg/
+          if-no-files-found: error
+
+  binary:
+    needs: ui
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # musl: fully static, so it runs on any distro regardless of glibc.
+          - name: linux-x86_64
+            os: ubuntu-latest
+            targets: x86_64-unknown-linux-musl
+          - name: windows-x86_64
+            os: windows-latest
+            targets: x86_64-pc-windows-msvc
+          # One universal binary (arm64 + x86_64) rather than two downloads.
+          - name: macos-universal
+            os: macos-latest
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg
+          path: pkg/
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          IFS=, read -ra targets <<< "${{ matrix.targets }}"
+          for t in "${targets[@]}"; do
+            cargo build --release --features embed --locked -p possess --target "$t"
+          done
+
+      - name: Package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          [[ "$GITHUB_REF" == refs/tags/* ]] || version="dev-${GITHUB_SHA::7}"
+          dir="possess-${version}-${{ matrix.name }}"
+          mkdir "$dir"
+          cp README.md "$dir/"
+          case "${{ matrix.name }}" in
+            windows-*)
+              cp target/x86_64-pc-windows-msvc/release/possess.exe launch.bat "$dir/"
+              7z a -bd "$dir.zip" "$dir" > /dev/null
+              echo "file=$dir.zip" >> "$GITHUB_OUTPUT" ;;
+            macos-*)
+              lipo -create -output "$dir/possess" \
+                target/aarch64-apple-darwin/release/possess \
+                target/x86_64-apple-darwin/release/possess
+              tar -czf "$dir.tar.gz" "$dir"
+              echo "file=$dir.tar.gz" >> "$GITHUB_OUTPUT" ;;
+            linux-*)
+              cp target/x86_64-unknown-linux-musl/release/possess "$dir/"
+              tar -czf "$dir.tar.gz" "$dir"
+              echo "file=$dir.tar.gz" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      # Proves the packaged binary starts and serves the embedded UI on its
+      # own platform, from a directory with none of the repo's web files.
+      - name: Smoke test the binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/smoke"
+          mkdir -p "$root"
+          bin=target/x86_64-unknown-linux-musl/release/possess
+          [[ "${{ matrix.name }}" == windows-* ]] && bin=target/x86_64-pc-windows-msvc/release/possess.exe
+          [[ "${{ matrix.name }}" == macos-* ]] && bin=target/aarch64-apple-darwin/release/possess
+          cp "$bin" "$root/"
+          cd "$root"
+          POSSESS_PORT=8765 ./"$(basename "$bin")" > server.log 2>&1 &
+          pid=$!
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8765/ > /dev/null && break
+            sleep 0.5
+          done
+          for path in / /pkg/possess_ui_bg.wasm /js/editor-shim.js /api/folders; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8765$path")
+            echo "$path -> $code"
+            [[ "$code" == 200 ]]
+          done
+          kill "$pid" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ steps.package.outputs.file }}
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: binary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+          pattern: "*-*"
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
