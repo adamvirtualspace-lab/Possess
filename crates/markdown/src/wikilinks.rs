@@ -563,3 +563,106 @@ mod completion_tests {
         );
     }
 }
+
+// ── Marking links in the editor ──
+
+/// One `[[…]]` in the editor's source, in the editor's own coordinates: a line
+/// number and a UTF-16 column range.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EditorLink {
+    pub line: usize,
+    pub start: usize,
+    pub end: usize,
+}
+
+/// Every link in a document that should be styled as one while editing.
+///
+/// Skips fenced code blocks and `code spans`, where a `[[` is sample text
+/// rather than a link. The editor has no parse to consult, so fences are
+/// tracked line by line: a line opening with ``` or ~~~ toggles them, which is
+/// what the JavaScript this replaces did.
+pub fn editor_links(text: &str) -> Vec<EditorLink> {
+    let mut found = Vec::new();
+    let mut fenced = false;
+
+    for (line, content) in text.split('\n').enumerate() {
+        let trimmed = content.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            fenced = !fenced;
+            continue;
+        }
+        if fenced {
+            continue;
+        }
+
+        for (start, end) in ranges(content) {
+            found.push(EditorLink {
+                line,
+                start: crate::utf16::offset_of(content, start),
+                end: crate::utf16::offset_of(content, end),
+            });
+        }
+    }
+    found
+}
+
+/// The link under a UTF-16 column on one line, ready for `parse`.
+///
+/// `link_at` with the editor's coordinates: a click reports where it landed in
+/// code units, and this is where that becomes a byte offset.
+pub fn link_at_column(line: &str, ch: usize) -> Option<String> {
+    link_at(line, crate::utf16::truncate_at(line, ch).len())
+}
+
+#[cfg(test)]
+mod editor_tests {
+    use super::*;
+
+    fn link(line: usize, start: usize, end: usize) -> EditorLink {
+        EditorLink { line, start, end }
+    }
+
+    #[test]
+    fn finds_links_on_every_line() {
+        let text = "See [[Ideas]] and\n[[projects/Plan|the plan]] too";
+        assert_eq!(editor_links(text), vec![link(0, 4, 13), link(1, 0, 26)]);
+    }
+
+    #[test]
+    fn skips_fenced_blocks_and_resumes_after_them() {
+        let text = "[[A]]\n```\n[[not a link]]\n```\n[[B]]";
+        assert_eq!(editor_links(text), vec![link(0, 0, 5), link(4, 0, 5)]);
+    }
+
+    #[test]
+    fn tildes_and_indented_fences_count_too() {
+        let text = "  ~~~\n[[inside]]\n  ~~~\n[[after]]";
+        assert_eq!(editor_links(text), vec![link(3, 0, 9)]);
+    }
+
+    #[test]
+    fn skips_code_spans() {
+        assert_eq!(editor_links("`[[code]]` then [[Real]]"), vec![link(0, 16, 24)]);
+    }
+
+    #[test]
+    fn columns_are_utf16_not_bytes() {
+        // The emoji is four bytes and two code units; a byte column would put
+        // the mark two characters too far right.
+        assert_eq!(editor_links("😀 [[Ideas]]"), vec![link(0, 3, 12)]);
+        assert_eq!(editor_links("é[[A]]"), vec![link(0, 1, 6)]);
+    }
+
+    #[test]
+    fn link_at_column_takes_utf16() {
+        let line = "😀 [[Ideas|mine]] end";
+        assert_eq!(link_at_column(line, 5).as_deref(), Some("Ideas|mine"));
+        assert_eq!(link_at_column(line, 0), None);
+        assert_eq!(link_at_column(line, 19), None);
+    }
+
+    #[test]
+    fn link_at_column_ignores_code() {
+        assert_eq!(link_at_column("`[[code]]`", 4), None);
+    }
+}

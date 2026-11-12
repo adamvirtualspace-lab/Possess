@@ -97,7 +97,7 @@ fn toggle_task(state: &AppState, input: &web_sys::HtmlInputElement) {
 }
 
 /// Follow a wiki link, creating the note when it does not exist yet.
-fn open_wikilink(state: &AppState, path: &str) {
+pub(crate) fn open_wikilink(state: &AppState, path: &str) {
     let notes = state.notes.get_untracked();
     let current = state.current_file.get_untracked();
 
