@@ -6,10 +6,12 @@
 mod api;
 mod context_menu;
 mod editor;
+mod follow;
 mod inline_edit;
 mod linkcomplete;
 mod modal;
 mod notes;
+mod paste;
 mod preview;
 mod resizer;
 mod scripts;
@@ -84,6 +86,7 @@ fn App() -> impl IntoView {
         editor::editor().on_change(move || for_change.on_edit());
 
         preview::wire(state.clone());
+        follow::wire(state.clone());
         resizer::init();
         theme::follow_system();
 
@@ -128,6 +131,7 @@ fn Shell() -> impl IntoView {
     let set_edit = set_mode.clone();
 
     let current = state.current_file;
+    let flash = state.flash;
     let mode = state.view_mode;
     let html = state.preview_html;
 
@@ -144,8 +148,13 @@ fn Shell() -> impl IntoView {
 
         <section class="main-content">
             <div class="top-bar">
-                <span id="current-file-name">
-                    {move || current.get().unwrap_or_else(|| "No file selected".into())}
+                <span id="current-file-name" class:is-warning=move || flash.with(Option::is_some)>
+                    {move || {
+                        flash
+                            .get()
+                            .or_else(|| current.get())
+                            .unwrap_or_else(|| "No file selected".into())
+                    }}
                 </span>
                 <div class="btn-group">
                     <ThemeButton />
@@ -221,7 +230,10 @@ fn build_editor(state: AppState) {
                 let state = state.clone();
                 move || linkcomplete::close(&state)
             })),
-            ..Default::default()
+            on_paste_image: Some(Box::new({
+                let state = state.clone();
+                move |file| paste::insert(&state, file)
+            })),
         },
     );
 

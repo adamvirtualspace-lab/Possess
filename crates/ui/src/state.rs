@@ -7,12 +7,12 @@
 //! changes, so there is nothing to dispatch and nothing to subscribe to.
 
 use crate::api;
-use crate::editor::{editor, Editor};
+use crate::editor::{editor, Editor, MarkRange};
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use possess_common::tree::{self, TreeNode};
-use possess_markdown::{render, RenderContext};
+use possess_markdown::{render, wikilinks, RenderContext};
 use std::cell::Cell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -34,6 +34,13 @@ pub const SEARCH_MS: i32 = 200;
 /// Rendering reads the whole document across the editor boundary, so it is
 /// worth not doing on every character.
 pub const RERENDER_MS: i32 = 300;
+
+/// How long a warning stays in the title bar before the note name comes back.
+pub const FLASH_MS: i32 = 4_000;
+
+/// The class CodeMirror puts on each `[[link]]` it marks, which
+/// `css/wikilinks.css` styles.
+const LINK_MARK: &str = "cm-wikilink";
 
 /// A timer that replaces its own pending callback.
 ///
@@ -111,6 +118,8 @@ pub struct AppState {
     pub complete_matches: RwSignal<Vec<String>>,
     /// Which of them is selected.
     pub complete_active: RwSignal<usize>,
+    /// A warning shown in place of the note name for a few seconds.
+    pub flash: RwSignal<Option<String>>,
 }
 
 #[derive(Default)]
@@ -119,6 +128,8 @@ struct Timers {
     rerender: Debounce,
     search: Debounce,
     undo: Debounce,
+    marks: Debounce,
+    flash: Debounce,
 }
 
 thread_local! {
@@ -152,6 +163,7 @@ impl AppState {
             context_menu: RwSignal::new(None),
             complete_matches: RwSignal::new(Vec::new()),
             complete_active: RwSignal::new(0),
+            flash: RwSignal::new(None),
         }
     }
 
@@ -185,6 +197,11 @@ impl AppState {
             }
         }));
 
+        // Links are restyled on the same beat as the preview: both read the
+        // whole document, so both wait for the typing to stop.
+        let state = self.clone();
+        TIMERS.with(|timers| timers.marks.schedule(RERENDER_MS, move || state.mark_links()));
+
         let state = self.clone();
         TIMERS.with(|timers| timers.save.schedule(AUTOSAVE_MS, move || {
             leptos::task::spawn_local(async move {
@@ -198,6 +215,29 @@ impl AppState {
     /// Withdraw an undo offer after `delay_ms`, replacing any pending timeout.
     pub fn undo_debounce(&self, delay_ms: i32, task: impl FnOnce() + 'static) {
         TIMERS.with(|timers| timers.undo.schedule(delay_ms, task));
+    }
+
+    /// Show a warning in the title bar for a few seconds.
+    ///
+    /// A later warning replaces an earlier one and restarts the clock, rather
+    /// than the first one's timeout cutting the second short.
+    pub fn warn(&self, message: impl Into<String>) {
+        self.flash.set(Some(message.into()));
+        let flash = self.flash;
+        TIMERS.with(|timers| timers.flash.schedule(FLASH_MS, move || flash.set(None)));
+    }
+
+    /// Style every `[[link]]` in the editor, all in one batch.
+    pub fn mark_links(&self) {
+        let ranges: Vec<MarkRange> = wikilinks::editor_links(&self.editor().content())
+            .into_iter()
+            .map(|link| MarkRange {
+                line: link.line as u32,
+                start: link.start as u32,
+                end: link.end as u32,
+            })
+            .collect();
+        self.editor().set_marks(LINK_MARK, &ranges);
     }
 
     /// Run `task` once the search box has been quiet for `delay_ms`.
@@ -266,6 +306,9 @@ impl AppState {
         self.editor().set_content(&file.content);
         self.dirty.set(false);
         self.rerender();
+        // Straight away rather than on the edit debounce, so a freshly opened
+        // note never shows its links unstyled for a moment.
+        self.mark_links();
         Ok(())
     }
 
@@ -294,6 +337,7 @@ impl AppState {
         self.editor().set_content(&content);
         self.dirty.set(true);
         self.rerender();
+        self.mark_links();
 
         let state = self.clone();
         leptos::task::spawn_local(async move {
