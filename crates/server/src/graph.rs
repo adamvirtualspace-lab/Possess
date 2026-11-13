@@ -12,14 +12,14 @@ use axum::extract::{Query, State};
 use axum::Json;
 use possess_common::{
     FlowPositionRequest, FlowPositionResponse, GraphEdge, GraphNode, GraphResponse, GraphStatus,
-    GraphTask, StatusChange, TaskStatusRequest, TaskStatusResponse,
+    GraphTask,
 };
 use possess_markdown::tasks::{
-    note_key, set_flow_position as rewrite_position, EditError, NeedsState, ParsedFile, Role,
-    Vault, Warning,
+    note_key, set_flow_position as rewrite_position, NeedsState, ParsedFile, Role, Vault, Warning,
 };
 use serde::Deserialize;
 
+use crate::activity::edit_error;
 use crate::error::{AppError, AppResult};
 use crate::notes::{mtime_secs, walk_notes};
 use crate::vault::AppState;
@@ -349,80 +349,12 @@ pub async fn get_graph(
     Ok(Json(build(&vault, flow)?))
 }
 
-fn edit_error(err: EditError) -> AppError {
-    match err {
-        EditError::Stale { .. } => AppError::conflict(err.to_string()),
-        EditError::NoFile { .. } | EditError::NoTask { .. } | EditError::NoNode { .. } => {
-            AppError::not_found(err.to_string())
-        }
-        EditError::UnknownStatus { .. } => AppError::bad_request(err.to_string()),
-    }
-}
-
-/// Change one task's status, then write it and every task it unblocked or
-/// blocked again.
-pub fn apply_status(base: &Path, req: &TaskStatusRequest) -> AppResult<Vec<StatusChange>> {
-    let mut vault = load_vault(base)?;
-    let key = note_key(&req.path);
-
-    // A blocked task waiting on its wires is the app's to change, not a click's.
-    if let Some(file) = vault.file(&key) {
-        if let Some(task) = file.task_at_line(req.line) {
-            let blocked = file.format.role_of(task.ch) == Some(Role::Blocked);
-            let waiting = matches!(
-                vault.needs_state(&key, task),
-                NeedsState::Unmet | NeedsState::Broken
-            );
-            if blocked && waiting && task.ch == req.from {
-                return Err(AppError::conflict(
-                    "This task is waiting on its needs:: wires, so it can't be changed yet.",
-                ));
-            }
-        }
-    }
-
-    let changes = vault
-        .set_status(&key, req.line, req.from, req.to)
-        .map_err(edit_error)?;
-
-    let mut written: Vec<&str> = Vec::new();
-    for change in &changes {
-        if written.contains(&change.path.as_str()) {
-            continue;
-        }
-        written.push(&change.path);
-        let full = crate::vault::resolve_in_vault(base, &format!("{}.md", change.path))?;
-        let src = vault
-            .source(&change.path)
-            .ok_or_else(|| AppError::internal("changed file vanished from the vault"))?;
-        std::fs::write(full, src)?;
-    }
-
-    Ok(changes
-        .into_iter()
-        .map(|c| StatusChange {
-            path: c.path,
-            line: c.line,
-            from: c.from,
-            to: c.to,
-        })
-        .collect())
-}
-
-pub async fn set_task_status(
-    State(state): State<AppState>,
-    Json(req): Json<TaskStatusRequest>,
-) -> AppResult<Json<TaskStatusResponse>> {
-    let _guard = state.graph_lock.lock().await;
-    let changes = apply_status(&state.vault_resolved(), &req)?;
-    Ok(Json(TaskStatusResponse { changes }))
-}
-
 pub async fn set_flow_position(
     State(state): State<AppState>,
     Json(req): Json<FlowPositionRequest>,
 ) -> AppResult<Json<FlowPositionResponse>> {
-    let _guard = state.graph_lock.lock().await;
+    // Under the engine's lock, like every other write it needs to know about.
+    let _engine = state.engine().await;
     let full = state.resolve(&format!("{}.md", note_key(&req.flow)))?;
     if !full.is_file() {
         return Err(AppError::not_found(format!("No such note: {}", req.flow)));
@@ -531,32 +463,6 @@ mod tests {
             && e.to_node == "review/director-notes"));
 
         assert!(build(&load_vault(&base).unwrap(), Some("anim/sh040")).is_err());
-        std::fs::remove_dir_all(base).ok();
-    }
-
-    #[test]
-    fn status_changes_are_written_with_their_flips() {
-        let base = sample_copy();
-        let req = |path: &str, line, from, to| TaskStatusRequest {
-            path: path.into(),
-            line,
-            from,
-            to,
-        };
-        apply_status(&base, &req("anim/sh040.md", 10, ' ', 'x')).unwrap();
-        let changes = apply_status(&base, &req("fx/sh040-water", 10, ' ', 'x')).unwrap();
-        assert_eq!(changes.len(), 2);
-        let lighting = std::fs::read_to_string(base.join("lighting/sh040.md")).unwrap();
-        assert!(lighting.contains("- [ ] Render lighting pass @maya @unit7 ^l2"));
-
-        // Stale: the client thinks it's still open.
-        let err = apply_status(&base, &req("anim/sh040", 10, ' ', '?')).unwrap_err();
-        assert_eq!(err.status.as_u16(), 409);
-        // Waiting on wires: comp still needs l2 and f3.
-        let err = apply_status(&base, &req("comp/sh040", 16, '-', ' ')).unwrap_err();
-        assert_eq!(err.status.as_u16(), 409);
-        // Outside the vault.
-        assert!(apply_status(&base, &req("../escape", 1, ' ', 'x')).is_err());
         std::fs::remove_dir_all(base).ok();
     }
 }

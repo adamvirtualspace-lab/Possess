@@ -360,12 +360,6 @@ pub struct StatusChange {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TaskStatusResponse {
-    /// The requested change first, then every task it unblocked or blocked.
-    pub changes: Vec<StatusChange>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowPositionRequest {
     /// The flow note.
     pub flow: String,
@@ -379,4 +373,70 @@ pub struct FlowPositionRequest {
 pub struct FlowPositionResponse {
     pub saved: bool,
     pub mtime: f64,
+}
+
+// ── Activity: the log of changes, undo, and outside edits ──
+
+/// One status change, as the activity list shows it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActivityChange {
+    /// Vault key: relative path without `.md`.
+    pub path: String,
+    pub line: usize,
+    pub id: Option<String>,
+    pub text: String,
+    pub from: char,
+    pub to: char,
+    /// The symbols the file's status format draws for `from` and `to`.
+    pub from_symbol: String,
+    pub to_symbol: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActivityLoop {
+    pub path: String,
+    pub line: usize,
+    pub text: String,
+    pub wanted: char,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActivityEntry {
+    pub id: u64,
+    /// RFC 3339, UTC.
+    pub time: String,
+    /// "click", "apply", "undo", "outside" or "editor".
+    pub source: String,
+    pub changes: Vec<ActivityChange>,
+    pub loops: Vec<ActivityLoop>,
+    pub undone: bool,
+    /// For an undo: the entry it undid.
+    pub undo_of: Option<u64>,
+    /// For an outside or editor edit: what its wires would do.
+    pub would: Vec<ActivityChange>,
+    /// "pending", "applied" or "dismissed" when `would` isn't empty.
+    pub state: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActivityResponse {
+    /// Newest first.
+    pub entries: Vec<ActivityEntry>,
+    /// The entry Undo would undo: the newest one the app made that isn't
+    /// undone yet.
+    pub undo_target: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActivityIdRequest {
+    pub id: u64,
+}
+
+/// Returned by everything that changes statuses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActivityResult {
+    /// The log entry the action created, if it changed anything.
+    pub entry: Option<u64>,
+    /// Every line written, so the UI can reload a note that was open.
+    pub changes: Vec<StatusChange>,
 }

@@ -1,5 +1,6 @@
 //! PossessApp - Markdown Note Taking Backend
 
+mod activity;
 mod assets;
 mod error;
 mod graph;
@@ -171,6 +172,8 @@ async fn main() {
     }
 
     let state = AppState::new(vault::load_saved_vault());
+    // Edits made in Obsidian, VS Code or by `git pull` are noticed by this.
+    tokio::spawn(activity::watch(state.clone()));
     println!("[PossessApp] Vault: {}", state.vault().display());
 
     let app = Router::new()
@@ -185,7 +188,12 @@ async fn main() {
         .route("/api/restore", post(notes::restore_entry))
         .route("/api/status", get(notes::get_status))
         .route("/api/graph", get(graph::get_graph))
-        .route("/api/task-status", post(graph::set_task_status))
+        .route("/api/task-status", post(activity::set_task_status))
+        .route("/api/activity", get(activity::get_activity))
+        .route("/api/activity/undo", post(activity::undo))
+        .route("/api/activity/apply", post(activity::apply))
+        .route("/api/activity/dismiss", post(activity::dismiss))
+        .route("/api/events", get(activity::events))
         .route("/api/flow/position", post(graph::set_flow_position))
         .route("/api/search", get(search::search))
         .route("/api/scripts", get(scripts::list_scripts))
