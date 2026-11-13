@@ -168,6 +168,21 @@ pub fn GraphView() -> impl IntoView {
     };
     let canvas = NodeRef::<html::Div>::new();
     let flow = RwSignal::new(None::<String>);
+    let activity_open = RwSignal::new(true);
+
+    // Redraw when the server reports a change (another app ticked a task,
+    // or an undo), unless a node is being dragged: it would jump back.
+    {
+        let state = state.clone();
+        Effect::new(move |previous: Option<u64>| {
+            let revision = state.revision.get();
+            let visible = state.view_mode.get_untracked() == ViewMode::Graph;
+            if previous.is_some() && visible && graph.drag.get_untracked().is_none() {
+                leptos::task::spawn_local(reload(graph, flow.get_untracked()));
+            }
+            revision
+        });
+    }
 
     // Load whenever the Graph view is shown, for whatever note is open then.
     {
@@ -376,6 +391,14 @@ pub fn GraphView() -> impl IntoView {
                     >"Compact"</button>
                 </div>
                 <div class="btn-group">
+                    <button
+                        class="btn"
+                        id="btn-activity"
+                        class:active=move || activity_open.get()
+                        on:click=move |_| activity_open.update(|open| *open = !*open)
+                    >"Activity"</button>
+                </div>
+                <div class="btn-group">
                     <button class="btn" title="Zoom out" on:click=move |_| zoom_by(1.0 / 1.2)>"−"</button>
                     <button
                         class="btn"
@@ -390,6 +413,7 @@ pub fn GraphView() -> impl IntoView {
                 </div>
             </div>
 
+            <div class="graph-body">
             <div
                 class="graph-canvas"
                 class:is-panning=move || matches!(graph.drag.get(), Some(Drag::Pan { .. }))
@@ -434,6 +458,11 @@ pub fn GraphView() -> impl IntoView {
                         })
                     })
                 }}
+            </div>
+            <crate::activity::ActivityPanel
+                open=activity_open
+                on_change=move || leptos::task::spawn_local(reload(graph, flow.get_untracked()))
+            />
             </div>
 
             <StatusMenu graph=graph flow=flow />
@@ -772,16 +801,7 @@ fn change_status(
             return;
         }
         match api::set_task_status(&node, line, from, to).await {
-            Ok(response) => {
-                let current = state.current_file.get_untracked();
-                let touched = current.as_deref().is_some_and(|c| {
-                    let key = c.trim_end_matches(".md");
-                    response.changes.iter().any(|ch| ch.path == key)
-                });
-                if let (true, Some(current)) = (touched, current) {
-                    let _ = state.open(&current).await;
-                }
-            }
+            Ok(result) => state.reload_if_touched(&result.changes).await,
             Err(err) => graph.error.set(Some(err)),
         }
         reload(graph, flow).await;

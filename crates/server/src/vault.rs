@@ -178,9 +178,13 @@ pub fn windows_drives() -> Vec<String> {
 pub struct AppState {
     vault: Arc<RwLock<PathBuf>>,
     pub hook_lock: Arc<tokio::sync::Mutex<()>>,
-    /// Held while the graph reads, changes and writes task files, so two
-    /// status changes can't interleave and lose one another's writes.
-    pub graph_lock: Arc<tokio::sync::Mutex<()>>,
+    /// The wire engine for the open vault, created on first use and
+    /// replaced when the vault changes. Its lock is held while task files
+    /// are read, changed and written, so two changes never interleave.
+    engine: Arc<tokio::sync::Mutex<Option<crate::activity::Engine>>>,
+    /// Fires whenever task statuses or the activity log change, for the
+    /// browsers listening on /api/events.
+    pub events: tokio::sync::broadcast::Sender<()>,
 }
 
 impl AppState {
@@ -188,7 +192,8 @@ impl AppState {
         Self {
             vault: Arc::new(RwLock::new(vault)),
             hook_lock: Arc::new(tokio::sync::Mutex::new(())),
-            graph_lock: Arc::new(tokio::sync::Mutex::new(())),
+            engine: Arc::new(tokio::sync::Mutex::new(None)),
+            events: tokio::sync::broadcast::channel(16).0,
         }
     }
 
@@ -208,6 +213,22 @@ impl AppState {
 
     pub fn resolve(&self, filepath: &str) -> AppResult<PathBuf> {
         resolve_in_vault(&self.vault(), filepath)
+    }
+
+    /// The open vault's wire engine, locked.
+    pub async fn engine(&self) -> tokio::sync::MappedMutexGuard<'_, crate::activity::Engine> {
+        let mut guard = self.engine.lock().await;
+        let vault = self.vault_resolved();
+        if guard.as_ref().is_none_or(|e| e.vault() != vault) {
+            *guard = Some(crate::activity::Engine::open(&vault));
+        }
+        tokio::sync::MutexGuard::map(guard, |e| e.as_mut().expect("engine was just opened"))
+    }
+
+    /// Tell listening browsers that statuses or the log changed.
+    pub fn notify(&self) {
+        // No listeners is fine: nobody has the app open.
+        let _ = self.events.send(());
     }
 }
 

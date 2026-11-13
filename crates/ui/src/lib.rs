@@ -3,6 +3,7 @@
 //! Compiled to WebAssembly and served at /, where it replaced the original
 //! JavaScript frontend once it reached parity with it.
 
+mod activity;
 mod api;
 mod context_menu;
 mod editor;
@@ -87,6 +88,7 @@ fn App() -> impl IntoView {
         editor::editor().on_change(move || for_change.on_edit());
 
         preview::wire(state.clone());
+        activity::listen(state.clone());
         follow::wire(state.clone());
         resizer::init();
         theme::follow_system();

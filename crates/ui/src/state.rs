@@ -122,6 +122,9 @@ pub struct AppState {
     pub complete_active: RwSignal<usize>,
     /// A warning shown in place of the note name for a few seconds.
     pub flash: RwSignal<Option<String>>,
+    /// Bumped whenever the server says statuses or the activity log changed
+    /// (`/api/events`), so the graph and the activity list redraw on their own.
+    pub revision: RwSignal<u64>,
 }
 
 #[derive(Default)]
@@ -166,6 +169,7 @@ impl AppState {
             complete_matches: RwSignal::new(Vec::new()),
             complete_active: RwSignal::new(0),
             flash: RwSignal::new(None),
+            revision: RwSignal::new(0),
         }
     }
 
@@ -307,6 +311,18 @@ impl AppState {
             open.extend(tree::ancestors(path));
         });
         Ok(())
+    }
+
+    /// Reload the open note if the server just rewrote it, so the editor
+    /// never saves its stale copy back over a status the wires set.
+    pub async fn reload_if_touched(&self, changes: &[possess_common::StatusChange]) {
+        let Some(current) = self.current_file.get_untracked() else {
+            return;
+        };
+        let key = current.trim_end_matches(".md");
+        if changes.iter().any(|c| c.path == key) {
+            let _ = self.open(&current).await;
+        }
     }
 
     /// Open a note in the editor.

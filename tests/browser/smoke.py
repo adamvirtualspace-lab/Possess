@@ -228,6 +228,69 @@ def graph(page: Page, vault: Path, out: Path) -> None:
         ".includes('- [ ] Render lighting pass')"
     )
 
+    activity(page, vault, out)
+
+
+def edit_on_disk(path: Path, old: str, new: str) -> None:
+    """Change a file the way another app (Obsidian, say) would."""
+    text = path.read_text(encoding="utf-8")
+    assert old in text, f"{path.name} has no {old!r}"
+    path.write_text(text.replace(old, new, 1), encoding="utf-8", newline="")
+
+
+def activity(page: Page, vault: Path, out: Path) -> None:
+    """Milestone 5: the activity log, undo, and edits made outside the app."""
+    step = lambda msg: print(f"  - {msg}", flush=True)  # noqa: E731
+    lighting_md = vault / "lighting" / "sh040.md"
+    comp_md = vault / "comp" / "sh040.md"
+    fx_md = vault / "fx" / "sh040-water.md"
+
+    step("the activity column lists the graph's changes")
+    page.locator('.file-item[data-path="flows/ep04-sh040.md"]').click()
+    expect(page.locator("#current-file-name")).to_contain_text("ep04-sh040")
+    page.locator("#btn-graph").click()
+    panel = page.locator(".activity-panel")
+    expect(panel).to_be_visible()
+    newest = panel.locator(".activity-entry").first
+    expect(newest).to_have_attribute("data-source", "click")
+    expect(newest).to_contain_text("Render lighting pass")
+
+    step("Undo takes back the whole last chain, in the files too")
+    newest.locator(".activity-undo").click()
+    wait_for_file(lighting_md, "- [-] Render lighting pass", 3)
+    wait_for_file(fx_md, "- [?] Cache water to disk", 3)
+    expect(graph_status(page, "lighting/sh040", 8)).to_have_text("⚪")
+    expect(panel.locator(".activity-entry").first).to_have_attribute("data-source", "undo")
+    # And ticked again from the graph.
+    graph_status(page, "fx/sh040-water", 10).click()
+    expect(graph_status(page, "lighting/sh040", 8)).to_have_text("🔳")
+
+    step("an edit in another app is logged, but its wires don't fire")
+    edit_on_disk(fx_md, "- [ ] Character and water contact", "- [x] Character and water contact")
+    expect(panel.locator('.activity-entry[data-source="outside"]')).to_have_count(1)
+    edit_on_disk(lighting_md, "- [ ] Render lighting pass", "- [x] Render lighting pass")
+    pending = panel.locator(".activity-entry.is-pending")
+    expect(pending).to_have_count(1)
+    expect(pending).to_contain_text("Comp pass sh040")
+    # The graph redrew by itself, and comp is still blocked on disk.
+    expect(graph_status(page, "lighting/sh040", 8)).to_have_text("✅")
+    expect(graph_status(page, "comp/sh040", 16)).to_have_text("⚪")
+    assert "- [-] Comp pass sh040" in comp_md.read_text(encoding="utf-8")
+
+    step("Apply runs what the wires would have done")
+    pending.locator(".activity-apply").click()
+    wait_for_file(comp_md, "- [ ] Comp pass sh040", 3)
+    expect(graph_status(page, "comp/sh040", 16)).to_have_text("🔳")
+    expect(panel.locator(".activity-entry").first).to_have_attribute("data-source", "apply")
+    expect(panel.locator(".activity-entry.is-pending")).to_have_count(0)
+    snapshot(page, out / "5-activity.png")
+
+    step("an applied chain can be undone; the log survives on disk")
+    panel.locator(".activity-entry").first.locator(".activity-undo").click()
+    wait_for_file(comp_md, "- [-] Comp pass sh040", 3)
+    log = (vault / ".obsessed" / "activity.json").read_text(encoding="utf-8")
+    assert '"source": "outside"' in log and '"state": "applied"' in log, log
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])

@@ -162,10 +162,21 @@ pub async fn save_file(
 ) -> AppResult<Json<SaveFileResponse>> {
     let full = state.resolve(&filepath)?;
 
-    if let Some(parent) = full.parent() {
-        std::fs::create_dir_all(parent)?;
+    // Under the wire engine's lock: a status typed in the editor is logged
+    // as an editor edit (and its wires flagged, not fired), and anything
+    // changed outside the app before this save is logged as that first.
+    let logged = {
+        let mut engine = state.engine().await;
+        engine.scan("outside")?;
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&full, &body.content)?;
+        engine.scan("editor")?
+    };
+    if logged {
+        state.notify();
     }
-    std::fs::write(&full, &body.content)?;
     let mtime = mtime_secs(&full);
 
     scripts::run_save_hooks(&state, &filepath).await;

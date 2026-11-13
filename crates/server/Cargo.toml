@@ -8,6 +8,7 @@ description = "PossessApp - Markdown Note Taking Backend"
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
+tokio-stream = { version = "0.1", features = ["sync"] }
 tower-http = { version = "0.6", features = ["fs", "cors", "set-header"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

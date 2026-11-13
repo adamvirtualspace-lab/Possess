@@ -4,9 +4,10 @@ This file is the contract. The parser, the node graph, the web server and anyone
 
 Everything here is plain markdown. A vault written for Obsessed still opens in Obsidian, VS Code or GitHub; those tools just don't run the wires.
 
-> v0.3, 2026-11-13. Everything in this file is agreed. New ideas go under [Ideas for later](#ideas-for-later-not-in-v03) until they are.
+> v0.4, 2026-11-13. Everything in this file is agreed. New ideas go under [Ideas for later](#ideas-for-later-not-in-v04) until they are.
 >
-> v0.3 changes section 7: a flow is now a note with a `::flow::` block, not a JSON file in `.obsessed/flows/`.
+> v0.3 changed section 7: a flow is a note with a `::flow::` block, not a JSON file in `.obsessed/flows/`.
+> v0.4 changes section 6: edits made outside the app are flagged rather than firing wires, and the log is saved in `.obsessed/activity.json` (section 8).
 
 ## 1. Tasks
 
@@ -163,8 +164,8 @@ A wire is written on the task that **receives** it (the downstream task), the sa
 - **Right-click menu:** right-clicking a task's status opens a menu of every status in that file's format, each with its symbol, label, character and role, and the current one highlighted. This works wherever a status shows: the `- [ ]` brackets in the markdown editor, the preview, and the graph. A status you can't pick right now is greyed out with the reason (for example the blocked status when `needs::` wires control it). Statuses listed after the done status (like a retake) can only be reached through this menu.
 - **Blocked tasks** can't be clicked while their `needs::` aren't met. A blocked task with no `needs::` was blocked by hand, so it can be changed normally.
 - **Loop guard:** within one chain reaction, wires and operator nodes can change each task at most once. If the chain tries to change a task a second time, that change is skipped and the app reports the loop. The change that started the chain doesn't count, so a flow can still send a task straight back (for example ✅ → 🔁 retake when a Text Check fails).
-- **Log and undo:** every change a wire or operator node makes is logged with the file, line, old value and new value. A whole chain reaction undoes as one step, newest chain first.
-- **Outside edits:** when a file changes outside the app (Obsidian, VS Code, `git pull`), the app re-reads it. Status changes in it fire wires like any other change, so people using other tools don't break the pipeline. They show in the log as outside edits and can't be undone from the app.
+- **Log and undo:** every change the app makes, by a click, a wire or an operator node, is logged with the file, line, old value and new value, and saved in `.obsessed/activity.json` (section 8), so it survives a restart. A whole chain reaction undoes as one step, newest chain first. Undo only goes ahead if every line still shows what the chain set; if one was edited since, nothing is undone and the app says which.
+- **Outside edits:** when a file changes outside the app (Obsidian, VS Code, `git pull`, or typing in the app's own markdown editor), the app re-reads it and redraws, but its wires **don't fire on their own**: the app writes nothing. The edit shows in the log as an outside edit, which can't be undone from the app. If its status changes would set off wires, the entry says what they would do ("would unblock Render lighting pass") and offers **Apply** and **Dismiss**. Apply checks the files as they are now and runs exactly what the wires would have done, as an ordinary chain that can be undone. This way a `git pull` never sets off a cascade of writes nobody asked for.
 
 ## 7. Flows
 
@@ -200,7 +201,51 @@ Mistakes:
 
 ## 8. The `.obsessed/` folder
 
-This folder sits at the vault root and holds settings that aren't notes, like a vault-wide default status format. Its format gets decided when the first setting needs it.
+This folder sits at the vault root and holds what the app keeps that isn't a note. Apps that don't know a file in it leave it alone.
+
+### `activity.json`: the log
+
+The log from section 6, newest entry last, at most 200 entries (the oldest go first). It's JSON so both apps read it the same way:
+
+```json
+{
+  "version": 1,
+  "next_id": 3,
+  "entries": [
+    {
+      "id": 1,
+      "time": "2026-11-13T10:40:05Z",
+      "source": "click",
+      "changes": [
+        { "path": "fx/sh040-water", "line": 10, "id": "f2", "text": "Cache water to disk @teo @unit7", "from": " ", "to": "x" },
+        { "path": "lighting/sh040", "line": 8, "id": "l2", "text": "Render lighting pass @maya @unit7", "from": "-", "to": " " }
+      ],
+      "loops": [],
+      "undone": false
+    },
+    {
+      "id": 2,
+      "time": "2026-11-13T10:42:11Z",
+      "source": "outside",
+      "changes": [
+        { "path": "fx/sh040-water", "line": 11, "id": "f3", "text": "Character and water contact @ika @teo", "from": " ", "to": "x" }
+      ],
+      "would": [
+        { "path": "comp/sh040", "line": 16, "id": "c1", "text": "Comp pass sh040 @sunhee @ika", "from": "-", "to": " " }
+      ],
+      "state": "pending"
+    }
+  ]
+}
+```
+
+- `source` says who made the change: `click` (a status changed in the app), `apply` (wires run by Apply), `undo` (an undo, which points at the entry it undid with `undo_of`), `outside` (another app) or `editor` (the app's own markdown editor).
+- Each change has the note's path without `.md`, the 1-based line, and the task's `^id` and text, so the task can be found again if lines moved. `from` and `to` are status characters.
+- Entries the app made (`click`, `apply`) can be undone; `undone` says whether they have been.
+- `outside` and `editor` entries can't be undone. When they would set off wires, `would` lists those changes and `state` is `pending`, then `applied` or `dismissed`.
+- `loops` lists changes the loop guard skipped: `{ "path", "line", "text", "wanted" }`.
+
+Later, vault settings (like a vault-wide default status format) will live here too.
 
 ## 9. How it looks in other tools
 
@@ -234,7 +279,7 @@ Late-afternoon sun, warm key from camera left.
 
 When both linked tasks become done, `^l2` flips from ⚪ to 🔳 and the file now reads `- [ ] Render lighting pass ...`.
 
-## Ideas for later (not in v0.3)
+## Ideas for later (not in v0.4)
 
 - Sections with their own status format, where a format applies from where it appears downward.
 - Hiding the format block in Obsidian with an Obsidian comment (`%% ... %%`).

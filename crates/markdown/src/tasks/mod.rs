@@ -15,6 +15,7 @@
 //! Positions are 1-based line numbers, never columns, so they mean the same
 //! thing in any language.
 
+mod chain;
 mod edit;
 mod flow;
 mod format;
@@ -24,6 +25,7 @@ mod vault;
 #[cfg(test)]
 mod tests;
 
+pub use chain::{Chain, LoopSkip};
 pub use edit::{set_flow_position, set_status, EditError};
 pub use flow::{Flow, FlowNode};
 pub use format::{Role, Status, StatusFormat, BUILTIN};
