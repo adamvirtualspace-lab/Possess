@@ -65,8 +65,12 @@ pub(crate) fn parse_block(
             continue;
         };
         let item_start = indent + 2;
-        let Some(inner) = item.strip_prefix("[[") else { continue };
-        let Some(close) = inner.find("]]") else { continue };
+        let Some(inner) = item.strip_prefix("[[") else {
+            continue;
+        };
+        let Some(close) = inner.find("]]") else {
+            continue;
+        };
 
         let target = inner[..close].split('|').next().unwrap_or("");
         let path = target.split('#').next().unwrap_or("").trim();
@@ -111,5 +115,8 @@ pub(crate) fn parse_block(
             tail: start + tail_start..start + text.len(),
         });
     }
-    Flow { line: open_line, nodes }
+    Flow {
+        line: open_line,
+        nodes,
+    }
 }

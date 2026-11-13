@@ -214,14 +214,22 @@ impl Vault {
             .ok_or_else(|| EditError::NoFile { path: path.clone() })?;
         let task = file.task_at_line(line).ok_or(EditError::NoTask { line })?;
         if task.ch != from {
-            return Err(EditError::Stale { line, found: task.ch });
+            return Err(EditError::Stale {
+                line,
+                found: task.ch,
+            });
         }
         let id = task.id.clone();
         let was_done = file.format.role_of(from) == Some(Role::Done);
         let now_done = file.format.role_of(to) == Some(Role::Done);
 
         self.write_status(&path, line, to)?;
-        let mut changes = vec![Change { path: path.clone(), line, from, to }];
+        let mut changes = vec![Change {
+            path: path.clone(),
+            line,
+            from,
+            to,
+        }];
 
         let Some(id) = id else { return Ok(changes) };
         if was_done == now_done {
@@ -241,9 +249,10 @@ impl Vault {
                     continue;
                 }
                 let format = &other.format;
-                let (Some(open), Some(blocked)) =
-                    (format.with_role(Role::Open), format.with_role(Role::Blocked))
-                else {
+                let (Some(open), Some(blocked)) = (
+                    format.with_role(Role::Open),
+                    format.with_role(Role::Blocked),
+                ) else {
                     continue;
                 };
                 let role = format.role_of(waiting.ch);
@@ -260,7 +269,12 @@ impl Vault {
 
         for (flip_path, flip_line, flip_to) in flips {
             let flip_from = self.write_status(&flip_path, flip_line, flip_to)?;
-            changes.push(Change { path: flip_path, line: flip_line, from: flip_from, to: flip_to });
+            changes.push(Change {
+                path: flip_path,
+                line: flip_line,
+                from: flip_from,
+                to: flip_to,
+            });
         }
         Ok(changes)
     }

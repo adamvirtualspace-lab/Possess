@@ -447,7 +447,11 @@ fn sample_vault() -> Vault {
             if path.is_dir() {
                 stack.push(path);
             } else if path.extension().is_some_and(|e| e == "md") {
-                let rel = path.strip_prefix(&root).unwrap().to_string_lossy().into_owned();
+                let rel = path
+                    .strip_prefix(&root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
                 vault.insert(&rel, &std::fs::read_to_string(&path).unwrap());
             }
         }
@@ -460,15 +464,26 @@ fn flow_problems() {
     let file = parse(parser_test!("flow-problems.md"));
     let flow = file.flow.as_ref().expect("the second block is the flow");
     assert_eq!(flow.line, 16);
-    let nodes: Vec<(&str, Option<(i32, i32)>)> =
-        flow.nodes.iter().map(|n| (n.path.as_str(), n.pos)).collect();
+    let nodes: Vec<(&str, Option<(i32, i32)>)> = flow
+        .nodes
+        .iter()
+        .map(|n| (n.path.as_str(), n.pos))
+        .collect();
     assert_eq!(
         nodes,
-        [("anim/sh040", Some((320, 40))), ("fx/sh040-water", None), ("ghost/missing", None)]
+        [
+            ("anim/sh040", Some((320, 40))),
+            ("fx/sh040-water", None),
+            ("ghost/missing", None)
+        ]
     );
     assert_eq!(
         codes(&file),
-        [(12, "flow-ignored"), (18, "position-bad"), (19, "node-duplicate")]
+        [
+            (12, "flow-ignored"),
+            (18, "position-bad"),
+            (19, "node-duplicate")
+        ]
     );
     // Nothing in a flow block is a task.
     assert!(file.tasks.is_empty());
@@ -477,7 +492,12 @@ fn flow_problems() {
 #[test]
 fn sample_flow_lists_the_pipeline() {
     let vault = sample_vault();
-    let flow = vault.file("flows/ep04-sh040").unwrap().flow.as_ref().unwrap();
+    let flow = vault
+        .file("flows/ep04-sh040")
+        .unwrap()
+        .flow
+        .as_ref()
+        .unwrap();
     assert_eq!(flow.nodes.len(), 9);
     assert!(flow.nodes.iter().all(|n| n.pos.is_some()));
     assert!(flow.nodes.iter().all(|n| vault.file(&n.path).is_some()));
@@ -490,17 +510,39 @@ fn moving_a_node_rewrites_only_its_numbers() {
     let src = parser_test!("flow-problems.md");
     // A valid position, a broken one, and none at all.
     let moved = set_flow_position(src, 17, -5, 1200).unwrap();
-    assert_eq!(moved, src.replacen("[[anim/sh040]] @ 320, 40", "[[anim/sh040]] @ -5, 1200", 1));
+    assert_eq!(
+        moved,
+        src.replacen("[[anim/sh040]] @ 320, 40", "[[anim/sh040]] @ -5, 1200", 1)
+    );
     let fixed = set_flow_position(src, 18, 1, 2).unwrap();
-    assert_eq!(fixed, src.replacen("[[fx/sh040-water]] @ left, 3", "[[fx/sh040-water]] @ 1, 2", 1));
+    assert_eq!(
+        fixed,
+        src.replacen(
+            "[[fx/sh040-water]] @ left, 3",
+            "[[fx/sh040-water]] @ 1, 2",
+            1
+        )
+    );
     let placed = set_flow_position(src, 21, 7, 8).unwrap();
-    assert_eq!(placed, src.replacen("- [[ghost/missing]]\n", "- [[ghost/missing]] @ 7, 8\n", 1));
+    assert_eq!(
+        placed,
+        src.replacen("- [[ghost/missing]]\n", "- [[ghost/missing]] @ 7, 8\n", 1)
+    );
     // The ignored duplicate and the earlier block aren't nodes.
-    assert_eq!(set_flow_position(src, 19, 0, 0), Err(EditError::NoNode { line: 19 }));
-    assert_eq!(set_flow_position(src, 13, 0, 0), Err(EditError::NoNode { line: 13 }));
+    assert_eq!(
+        set_flow_position(src, 19, 0, 0),
+        Err(EditError::NoNode { line: 19 })
+    );
+    assert_eq!(
+        set_flow_position(src, 13, 0, 0),
+        Err(EditError::NoNode { line: 13 })
+    );
 
     let crlf = "::flow::\r\n- [[a]] @ 1, 2\r\n::flow::\r\n";
-    assert_eq!(set_flow_position(crlf, 2, 3, 4).unwrap(), "::flow::\r\n- [[a]] @ 3, 4\r\n::flow::\r\n");
+    assert_eq!(
+        set_flow_position(crlf, 2, 3, 4).unwrap(),
+        "::flow::\r\n- [[a]] @ 3, 4\r\n::flow::\r\n"
+    );
 }
 
 #[test]
@@ -509,7 +551,9 @@ fn flow_edge_cases() {
     assert_eq!(unclosed.flow, None);
     assert_eq!(codes(&unclosed), [(1, "flow-unclosed")]);
 
-    let file = parse("::flow::\n- [[a.md|Alias]] @ 1,2\n  * [[b#Heading]]\n- [ ] not a task here\n::flow::\n");
+    let file = parse(
+        "::flow::\n- [[a.md|Alias]] @ 1,2\n  * [[b#Heading]]\n- [ ] not a task here\n::flow::\n",
+    );
     let flow = file.flow.unwrap();
     let paths: Vec<&str> = flow.nodes.iter().map(|n| n.path.as_str()).collect();
     assert_eq!(paths, ["a", "b"]);
@@ -527,7 +571,12 @@ fn sample_vault_flow_warnings() {
         .collect();
     assert_eq!(
         found,
-        [(12, "flow-ignored"), (18, "position-bad"), (19, "node-duplicate"), (21, "node-missing")]
+        [
+            (12, "flow-ignored"),
+            (18, "position-bad"),
+            (19, "node-duplicate"),
+            (21, "node-missing")
+        ]
     );
     assert!(!warnings.contains_key("flows/ep04-sh040"));
 }
@@ -539,7 +588,13 @@ fn sample_vault_flow_warnings() {
 #[test]
 fn ticking_both_needs_unblocks_lighting() {
     let mut vault = sample_vault();
-    let lighting = |v: &Vault| v.file("lighting/sh040").unwrap().task_by_id("l2").unwrap().ch;
+    let lighting = |v: &Vault| {
+        v.file("lighting/sh040")
+            .unwrap()
+            .task_by_id("l2")
+            .unwrap()
+            .ch
+    };
     assert_eq!(lighting(&vault), '-');
 
     // Polish pass: anim line 10. Lighting still waits for the water cache.
@@ -552,8 +607,18 @@ fn ticking_both_needs_unblocks_lighting() {
     assert_eq!(
         changes,
         [
-            Change { path: "fx/sh040-water".into(), line: 10, from: ' ', to: 'x' },
-            Change { path: "lighting/sh040".into(), line: 8, from: '-', to: ' ' },
+            Change {
+                path: "fx/sh040-water".into(),
+                line: 10,
+                from: ' ',
+                to: 'x'
+            },
+            Change {
+                path: "lighting/sh040".into(),
+                line: 8,
+                from: '-',
+                to: ' '
+            },
         ]
     );
     assert_eq!(lighting(&vault), ' ');
@@ -562,7 +627,15 @@ fn ticking_both_needs_unblocks_lighting() {
         .unwrap()
         .contains("- [ ] Render lighting pass @maya @unit7 ^l2"));
     // Comp also needs f2, but still waits for l2 and f3: no flip.
-    assert_eq!(vault.file("comp/sh040").unwrap().task_by_id("c1").unwrap().ch, '-');
+    assert_eq!(
+        vault
+            .file("comp/sh040")
+            .unwrap()
+            .task_by_id("c1")
+            .unwrap()
+            .ch,
+        '-'
+    );
 }
 
 #[test]
@@ -574,14 +647,30 @@ fn a_retake_blocks_waiting_tasks_again() {
     // Polish pass goes back to ready to check: lighting is open, so it's
     // blocked again.
     let changes = vault.set_status("anim/sh040", 10, 'x', '?').unwrap();
-    assert_eq!(changes[1], Change { path: "lighting/sh040".into(), line: 8, from: ' ', to: '-' });
+    assert_eq!(
+        changes[1],
+        Change {
+            path: "lighting/sh040".into(),
+            line: 8,
+            from: ' ',
+            to: '-'
+        }
+    );
 
     // Once lighting has moved on, a retake leaves it alone.
     vault.set_status("anim/sh040", 10, '?', 'x').unwrap();
     vault.set_status("lighting/sh040", 8, ' ', '?').unwrap();
     let changes = vault.set_status("anim/sh040", 10, 'x', '?').unwrap();
     assert_eq!(changes.len(), 1);
-    assert_eq!(vault.file("lighting/sh040").unwrap().task_by_id("l2").unwrap().ch, '?');
+    assert_eq!(
+        vault
+            .file("lighting/sh040")
+            .unwrap()
+            .task_by_id("l2")
+            .unwrap()
+            .ch,
+        '?'
+    );
 }
 
 #[test]
@@ -590,10 +679,16 @@ fn a_stale_status_changes_nothing() {
     let before = vault.source("anim/sh040").unwrap().to_string();
     assert_eq!(
         vault.set_status("anim/sh040", 10, 'x', '?'),
-        Err(EditError::Stale { line: 10, found: ' ' })
+        Err(EditError::Stale {
+            line: 10,
+            found: ' '
+        })
     );
     assert_eq!(vault.source("anim/sh040").unwrap(), before);
-    assert!(matches!(vault.set_status("nope", 1, ' ', 'x'), Err(EditError::NoFile { .. })));
+    assert!(matches!(
+        vault.set_status("nope", 1, ' ', 'x'),
+        Err(EditError::NoFile { .. })
+    ));
 }
 
 #[test]

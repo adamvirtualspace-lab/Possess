@@ -24,15 +24,16 @@ use crate::error::{AppError, AppResult};
 use crate::notes::{mtime_secs, walk_notes};
 use crate::vault::AppState;
 
-/// Gap between automatic layout columns and rows, in canvas pixels.
+/// Distance between automatic layout columns, in canvas pixels.
 const COLUMN: i32 = 340;
-const ROW: i32 = 260;
 
 /// Read every note in the vault.
 pub fn load_vault(base: &Path) -> std::io::Result<Vault> {
     let mut vault = Vault::new();
     for entry in walk_notes(base) {
-        let Ok(rel) = entry.path().strip_prefix(base) else { continue };
+        let Ok(rel) = entry.path().strip_prefix(base) else {
+            continue;
+        };
         // A file that isn't UTF-8 isn't a note we can parse; skip it.
         if let Ok(src) = std::fs::read_to_string(entry.path()) {
             vault.insert(&rel.to_string_lossy(), &src);
@@ -92,20 +93,44 @@ fn task_rows(vault: &Vault, key: &str, file: &ParsedFile, warnings: &[Warning]) 
         .collect()
 }
 
-/// Columns by dependency depth (rig → anim → lighting → …), rows in order
-/// within a column. Only nodes without a saved position are moved.
+/// Height of a node in the Tasks view. Matches the UI's fixed geometry
+/// (crates/ui/src/graph.rs): header, one row per task, footer.
+fn node_height(node: &GraphNode) -> i32 {
+    54 + node.tasks.len().max(1) as i32 * 30 + 28
+}
+
+/// Lay out the nodes that have no saved position.
+///
+/// Notes joined by wires get columns by wire depth (rig → anim →
+/// lighting → …), each column stacked by real node height. Notes with no
+/// wires at all go in a grid underneath, so a vault full of plain to-do
+/// lists doesn't stretch the pipeline into one tall column.
 fn layout(nodes: &mut [GraphNode], edges: &[GraphEdge]) {
+    const GAP: i32 = 40;
     let index: HashMap<String, usize> = nodes
         .iter()
         .enumerate()
         .map(|(i, n)| (n.path.clone(), i))
         .collect();
+    // Only wires between two notes count: one inside a note connects it to
+    // nothing else.
+    let mut wired = vec![false; nodes.len()];
+    for edge in edges.iter().filter(|e| e.from_node != e.to_node) {
+        for end in [&edge.from_node, &edge.to_node] {
+            if let Some(&i) = index.get(end) {
+                wired[i] = true;
+            }
+        }
+    }
+
     let mut depth = vec![0usize; nodes.len()];
     // Longest path from a source, relaxed at most once per node, so a cycle
     // can't loop forever.
     for _ in 0..nodes.len() {
         let mut changed = false;
-        for edge in edges.iter().filter(|e| e.kind == "needs") {
+        // Sync wires count too: a director's note that mirrors an anim task
+        // reads best to the right of it.
+        for edge in edges.iter().filter(|e| e.from_node != e.to_node) {
             let (Some(&from), Some(&to)) = (index.get(&edge.from_node), index.get(&edge.to_node))
             else {
                 continue;
@@ -119,87 +144,150 @@ fn layout(nodes: &mut [GraphNode], edges: &[GraphEdge]) {
             break;
         }
     }
-    let mut rows: BTreeMap<usize, i32> = BTreeMap::new();
+
+    // The wired pipeline, in columns.
+    let mut column_y: BTreeMap<usize, i32> = BTreeMap::new();
     for (i, node) in nodes.iter_mut().enumerate() {
-        if node.placed {
+        if node.placed || !wired[i] {
             continue;
         }
-        let row = rows.entry(depth[i]).or_insert(0);
+        let y = column_y.entry(depth[i]).or_insert(0);
         node.x = depth[i] as i32 * COLUMN;
-        node.y = *row * ROW;
-        *row += 1;
+        node.y = *y;
+        *y += node_height(node) + GAP;
     }
+
+    // Everything else in a grid below whatever is already on the canvas.
+    let bottom = nodes
+        .iter()
+        .enumerate()
+        .filter(|(i, n)| n.placed || wired[*i])
+        .map(|(_, n)| n.y + node_height(n))
+        .max()
+        .map_or(0, |b| b + GAP * 3);
+    let per_row = column_y.len().max(4);
+    let mut row_top = bottom;
+    let mut row_height = 0;
+    let mut col = 0;
+    for (i, node) in nodes.iter_mut().enumerate() {
+        if node.placed || wired[i] {
+            continue;
+        }
+        if col == per_row {
+            col = 0;
+            row_top += row_height + GAP;
+            row_height = 0;
+        }
+        node.x = col as i32 * COLUMN;
+        node.y = row_top;
+        row_height = row_height.max(node_height(node));
+        col += 1;
+    }
+}
+
+/// A note that is in the graph, before it becomes a node.
+struct Member {
+    key: String,
+    /// Saved in the flow note.
+    pos: Option<(i32, i32)>,
+    /// Its line in the flow note.
+    flow_line: Option<usize>,
 }
 
 /// Build the graph for a flow note, or for every note with tasks.
 pub fn build(vault: &Vault, flow: Option<&str>) -> Result<GraphResponse, AppError> {
-    // (path, saved position, line in the flow)
-    let members: Vec<(String, Option<(i32, i32)>, Option<usize>)> = match flow {
+    let members: Vec<Member> = match flow {
         Some(flow_path) => {
             let file = vault
                 .file(flow_path)
                 .ok_or_else(|| AppError::not_found(format!("No such note: {flow_path}")))?;
             let flow = file.flow.as_ref().ok_or_else(|| {
-                AppError::bad_request(format!("{flow_path} isn't a flow: it has no ::flow:: block"))
+                AppError::bad_request(format!(
+                    "{flow_path} isn't a flow: it has no ::flow:: block"
+                ))
             })?;
             flow.nodes
                 .iter()
-                .map(|n| (note_key(&n.path), n.pos, Some(n.line)))
+                .map(|n| Member {
+                    key: note_key(&n.path),
+                    pos: n.pos,
+                    flow_line: Some(n.line),
+                })
                 .collect()
         }
         None => vault
             .files()
             .filter(|(_, file)| !file.tasks.is_empty())
-            .map(|(key, _)| (key.to_string(), None, None))
+            .map(|(key, _)| Member {
+                key: key.to_string(),
+                pos: None,
+                flow_line: None,
+            })
             .collect(),
     };
 
     let all_warnings = vault.warnings();
     let mut nodes: Vec<GraphNode> = members
         .iter()
-        .map(|(key, pos, flow_line)| {
-            let file = vault.file(key);
-            let warnings = all_warnings.get(key.as_str()).map(Vec::as_slice).unwrap_or(&[]);
-            let tasks = file.map(|f| task_rows(vault, key, f, warnings)).unwrap_or_default();
-            GraphNode {
-                path: key.clone(),
-                file: format!("{key}.md"),
-                title: vault.source(key).map_or_else(|| key.clone(), |src| title(src, key)),
-                missing: file.is_none(),
-                x: pos.map_or(0, |p| p.0),
-                y: pos.map_or(0, |p| p.1),
-                placed: pos.is_some(),
-                flow_line: *flow_line,
-                statuses: file
-                    .map(|f| {
-                        f.format
-                            .statuses
-                            .iter()
-                            .map(|s| GraphStatus {
-                                ch: s.ch,
-                                symbol: s.symbol.clone(),
-                                label: s.label.clone(),
-                                role: role_name(s.role),
-                                right_click_only: f.format.is_right_click_only(s.ch),
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-                open: tasks.iter().filter(|t| !t.done).count(),
-                tasks,
-                wires_in: 0,
-                wires_out: 0,
-                warnings: warnings.len(),
-            }
-        })
+        .map(
+            |Member {
+                 key,
+                 pos,
+                 flow_line,
+             }| {
+                let file = vault.file(key);
+                let warnings = all_warnings
+                    .get(key.as_str())
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                let tasks = file
+                    .map(|f| task_rows(vault, key, f, warnings))
+                    .unwrap_or_default();
+                GraphNode {
+                    path: key.clone(),
+                    file: format!("{key}.md"),
+                    title: vault
+                        .source(key)
+                        .map_or_else(|| key.clone(), |src| title(src, key)),
+                    missing: file.is_none(),
+                    x: pos.map_or(0, |p| p.0),
+                    y: pos.map_or(0, |p| p.1),
+                    placed: pos.is_some(),
+                    flow_line: *flow_line,
+                    statuses: file
+                        .map(|f| {
+                            f.format
+                                .statuses
+                                .iter()
+                                .map(|s| GraphStatus {
+                                    ch: s.ch,
+                                    symbol: s.symbol.clone(),
+                                    label: s.label.clone(),
+                                    role: role_name(s.role),
+                                    right_click_only: f.format.is_right_click_only(s.ch),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    open: tasks.iter().filter(|t| !t.done).count(),
+                    tasks,
+                    wires_in: 0,
+                    wires_out: 0,
+                    warnings: warnings.len(),
+                }
+            },
+        )
         .collect();
 
     // Wires between nodes of this graph only, drawn from the upstream task
     // to the task the wire is written on.
-    let in_graph: HashMap<&str, ()> = members.iter().map(|(k, _, _)| (k.as_str(), ())).collect();
+    let in_graph: std::collections::HashSet<&str> =
+        members.iter().map(|m| m.key.as_str()).collect();
     let mut edges = Vec::new();
-    for (key, _, _) in &members {
-        let Some(file) = vault.file(key) else { continue };
+    for Member { key, .. } in &members {
+        let Some(file) = vault.file(key) else {
+            continue;
+        };
         for task in &file.tasks {
             let links = task
                 .needs
@@ -207,8 +295,10 @@ pub fn build(vault: &Vault, flow: Option<&str>) -> Result<GraphResponse, AppErro
                 .map(|l| ("needs", l))
                 .chain(task.sync.iter().map(|l| ("sync", l)));
             for (kind, link) in links {
-                let Some((from_key, from_task)) = vault.resolve(key, link) else { continue };
-                if !in_graph.contains_key(from_key) {
+                let Some((from_key, from_task)) = vault.resolve(key, link) else {
+                    continue;
+                };
+                if !in_graph.contains(from_key) {
                     continue;
                 }
                 edges.push(GraphEdge {
@@ -223,8 +313,18 @@ pub fn build(vault: &Vault, flow: Option<&str>) -> Result<GraphResponse, AppErro
         }
     }
     for node in &mut nodes {
-        node.wires_in = edges.iter().filter(|e| e.to_node == node.path).count();
-        node.wires_out = edges.iter().filter(|e| e.from_node == node.path).count();
+        // Wires between notes only: one inside a note is shown by its lock.
+        let between = |e: &&GraphEdge| e.from_node != e.to_node;
+        node.wires_in = edges
+            .iter()
+            .filter(between)
+            .filter(|e| e.to_node == node.path)
+            .count();
+        node.wires_out = edges
+            .iter()
+            .filter(between)
+            .filter(|e| e.from_node == node.path)
+            .count();
     }
 
     layout(&mut nodes, &edges);
@@ -344,7 +444,10 @@ mod tests {
     fn sample_copy() -> std::path::PathBuf {
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sample-vault");
         let dst = std::env::temp_dir().join(format!("possess-graph-{}", uuid::Uuid::new_v4()));
-        for entry in walkdir::WalkDir::new(&src).into_iter().filter_map(Result::ok) {
+        for entry in walkdir::WalkDir::new(&src)
+            .into_iter()
+            .filter_map(Result::ok)
+        {
             let rel = entry.path().strip_prefix(&src).unwrap();
             let target = dst.join(rel);
             if entry.file_type().is_dir() {
@@ -370,6 +473,26 @@ mod tests {
         assert!(x("anim/sh040") < x("lighting/sh040"));
         assert!(x("lighting/sh040") < x("comp/sh040"));
         assert!(x("comp/sh040") < x("delivery/ep04"));
+        // Notes without wires sit in a grid below the pipeline, not in it.
+        let node = |p: &str| graph.nodes.iter().find(|n| n.path == p).unwrap();
+        let lowest_wired = ["rig/hero", "anim/sh040", "fx/sh040-water", "comp/sh040"]
+            .iter()
+            .map(|p| node(p).y + node_height(node(p)))
+            .max()
+            .unwrap();
+        assert!(node("_parser-tests/roles").y > lowest_wired);
+        // No two nodes overlap.
+        for a in &graph.nodes {
+            for b in &graph.nodes {
+                if a.path < b.path {
+                    let apart = a.x + 264 <= b.x
+                        || b.x + 264 <= a.x
+                        || a.y + node_height(a) <= b.y
+                        || b.y + node_height(b) <= a.y;
+                    assert!(apart, "{} overlaps {}", a.path, b.path);
+                }
+            }
+        }
         std::fs::remove_dir_all(base).ok();
     }
 
@@ -379,15 +502,29 @@ mod tests {
         let graph = build(&load_vault(&base).unwrap(), Some("flows/ep04-sh040.md")).unwrap();
         assert_eq!(graph.flow.as_deref(), Some("flows/ep04-sh040"));
         assert_eq!(graph.nodes.len(), 9);
-        let lighting = graph.nodes.iter().find(|n| n.path == "lighting/sh040").unwrap();
+        let lighting = graph
+            .nodes
+            .iter()
+            .find(|n| n.path == "lighting/sh040")
+            .unwrap();
         assert_eq!((lighting.x, lighting.y, lighting.placed), (640, 120, true));
         assert_eq!(lighting.flow_line, Some(9));
         assert_eq!((lighting.wires_in, lighting.wires_out), (2, 1));
-        let l2 = lighting.tasks.iter().find(|t| t.id.as_deref() == Some("l2")).unwrap();
+        let l2 = lighting
+            .tasks
+            .iter()
+            .find(|t| t.id.as_deref() == Some("l2"))
+            .unwrap();
         assert!(l2.locked);
-        assert_eq!(l2.next, None, "a task waiting on its wires can't be clicked");
+        assert_eq!(
+            l2.next, None,
+            "a task waiting on its wires can't be clicked"
+        );
         // The task-less reply note is a node because the flow lists it.
-        assert!(graph.nodes.iter().any(|n| n.path == "review/sh040-reply" && n.tasks.is_empty()));
+        assert!(graph
+            .nodes
+            .iter()
+            .any(|n| n.path == "review/sh040-reply" && n.tasks.is_empty()));
         // The sync wire from anim a3 to director notes d1.
         assert!(graph.edges.iter().any(|e| e.kind == "sync"
             && e.from_node == "anim/sh040"
