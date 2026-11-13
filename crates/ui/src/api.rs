@@ -218,7 +218,7 @@ pub async fn set_task_status(
     line: usize,
     from: char,
     to: char,
-) -> Result<TaskStatusResponse, String> {
+) -> Result<ActivityResult, String> {
     let body = TaskStatusRequest {
         path: path.to_string(),
         line,
@@ -241,4 +241,22 @@ pub async fn set_flow_position(
         y,
     };
     post("/api/flow/position", &body).await
+}
+
+// ── Activity ──
+
+pub async fn get_activity() -> Result<ActivityResponse, String> {
+    get("/api/activity").await
+}
+
+pub async fn undo() -> Result<ActivityResult, String> {
+    post("/api/activity/undo", &serde_json::json!({})).await
+}
+
+pub async fn apply(id: u64) -> Result<ActivityResult, String> {
+    post("/api/activity/apply", &ActivityIdRequest { id }).await
+}
+
+pub async fn dismiss(id: u64) -> Result<ActivityResult, String> {
+    post("/api/activity/dismiss", &ActivityIdRequest { id }).await
 }
