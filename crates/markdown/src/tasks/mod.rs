@@ -5,15 +5,18 @@
 //! and the tests here check each one.
 //!
 //! - [`parse`] reads one file.
-//! - [`set_status`] rewrites one task's status character and nothing else.
+//! - [`set_status`] rewrites one task's status character and nothing else;
+//!   [`set_flow_position`] rewrites one flow node's `@ x, y`.
 //! - [`Vault`] holds every parsed file and checks what crosses files:
 //!   links that point nowhere, and tasks whose status disagrees with their
-//!   `needs::`.
+//!   `needs::`. [`Vault::set_status`] applies a change and the unblocking
+//!   and re-blocking it sets off.
 //!
 //! Positions are 1-based line numbers, never columns, so they mean the same
 //! thing in any language.
 
 mod edit;
+mod flow;
 mod format;
 mod parse;
 mod vault;
@@ -21,10 +24,11 @@ mod vault;
 #[cfg(test)]
 mod tests;
 
-pub use edit::{set_status, EditError};
+pub use edit::{set_flow_position, set_status, EditError};
+pub use flow::{Flow, FlowNode};
 pub use format::{Role, Status, StatusFormat, BUILTIN};
 pub use parse::{parse, ParsedFile, Task, TaskRef};
-pub use vault::{NeedsState, Vault};
+pub use vault::{key as note_key, Change, NeedsState, Vault};
 
 /// A problem found while reading files. The line is left as it is.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,6 +76,15 @@ pub enum WarningCode {
     LinkBroken,
     /// A task's saved status disagrees with its `needs::`.
     NeedsMismatch,
+    /// An earlier `::flow::` lost to a later one.
+    FlowIgnored,
+    FlowUnclosed,
+    /// A flow node's `@ x, y` isn't two whole numbers.
+    PositionBad,
+    /// The same note twice in one flow.
+    NodeDuplicate,
+    /// A flow node links to a note that doesn't exist.
+    NodeMissing,
 }
 
 impl WarningCode {
@@ -93,6 +106,11 @@ impl WarningCode {
             WarningCode::LinkNotTask => "link-not-task",
             WarningCode::LinkBroken => "link-broken",
             WarningCode::NeedsMismatch => "needs-mismatch",
+            WarningCode::FlowIgnored => "flow-ignored",
+            WarningCode::FlowUnclosed => "flow-unclosed",
+            WarningCode::PositionBad => "position-bad",
+            WarningCode::NodeDuplicate => "node-duplicate",
+            WarningCode::NodeMissing => "node-missing",
         }
     }
 }

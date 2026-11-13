@@ -7,6 +7,7 @@ mod api;
 mod context_menu;
 mod editor;
 mod follow;
+mod graph;
 mod inline_edit;
 mod linkcomplete;
 mod modal;
@@ -125,10 +126,13 @@ fn Shell() -> impl IntoView {
                     state.editor().hide();
                 }
                 ViewMode::Edit => state.editor().show(),
+                // The graph saves the open note itself before it loads.
+                ViewMode::Graph => state.editor().hide(),
             }
         }
     };
     let set_edit = set_mode.clone();
+    let set_graph = set_mode.clone();
 
     let current = state.current_file;
     let flash = state.flash;
@@ -172,10 +176,18 @@ fn Shell() -> impl IntoView {
                     >
                         "Preview"
                     </button>
+                    <button
+                        class="btn"
+                        id="btn-graph"
+                        class:active=move || mode.get() == ViewMode::Graph
+                        on:click=move |_| set_graph(ViewMode::Graph)
+                    >
+                        "Graph"
+                    </button>
                 </div>
             </div>
 
-            <div class="viewport">
+            <div class="viewport" class:is-graph=move || mode.get() == ViewMode::Graph>
                 // The editor is built into this host after mount. Rendered
                 // once, with no reactive children, so Leptos never touches the
                 // DOM SimpleMDE puts inside it.
@@ -190,6 +202,7 @@ fn Shell() -> impl IntoView {
                     }
                     inner_html=move || html.get()
                 ></div>
+                <graph::GraphView />
             </div>
         </section>
     }

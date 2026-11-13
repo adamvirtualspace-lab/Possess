@@ -250,3 +250,133 @@ pub struct PasteImageResponse {
 pub struct ErrorBody {
     pub detail: String,
 }
+
+// ── Graph (SYNTAX.md sections 5 to 7) ──
+
+/// One status a node's file offers, in its format's order.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GraphStatus {
+    pub ch: char,
+    pub symbol: String,
+    pub label: String,
+    /// "open", "done" or "blocked".
+    pub role: Option<String>,
+    /// Listed after the done status: offered only by the right-click menu.
+    pub right_click_only: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GraphTask {
+    /// 1-based line in the node's file: what a status change names.
+    pub line: usize,
+    pub ch: char,
+    /// What to draw: the status symbol, or ⚠ when `known` is false.
+    pub symbol: String,
+    pub label: String,
+    pub known: bool,
+    pub text: String,
+    pub id: Option<String>,
+    pub people: Vec<String>,
+    pub done: bool,
+    /// Has `needs::` wires, which then decide whether it is blocked.
+    pub has_needs: bool,
+    /// Has `needs::` that aren't all done. Drawn with a lock; clicking it
+    /// does nothing while it is blocked.
+    pub locked: bool,
+    /// Where a click sends it, if anywhere.
+    pub next: Option<char>,
+    /// Set when the saved status disagrees with the task's `needs::`.
+    pub warning: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GraphNode {
+    /// Vault key: relative path without `.md`. What wires and flows use.
+    pub path: String,
+    /// The file to open in the editor, with `.md`.
+    pub file: String,
+    /// The note's first `#` heading, or its file name.
+    pub title: String,
+    /// A flow links to a note that doesn't exist.
+    pub missing: bool,
+    /// Canvas position: saved in the flow, or laid out automatically.
+    pub x: i32,
+    pub y: i32,
+    /// The position came from the flow note, not the automatic layout.
+    pub placed: bool,
+    /// The node's line in the flow note, so a drag can save its position.
+    /// `None` outside a flow.
+    pub flow_line: Option<usize>,
+    pub statuses: Vec<GraphStatus>,
+    pub tasks: Vec<GraphTask>,
+    /// Wires arriving at and leaving this node's tasks.
+    pub wires_in: usize,
+    pub wires_out: usize,
+    /// Tasks whose status isn't done.
+    pub open: usize,
+    pub warnings: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GraphEdge {
+    /// "needs" or "sync".
+    pub kind: String,
+    /// Upstream: the task that is needed or synced from.
+    pub from_node: String,
+    pub from_line: usize,
+    /// Downstream: the task the wire is written on.
+    pub to_node: String,
+    pub to_line: usize,
+    /// The upstream task is done.
+    pub live: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GraphResponse {
+    /// The flow note shown, or `None` for the whole vault.
+    pub flow: Option<String>,
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskStatusRequest {
+    /// Vault-relative path, with or without `.md`.
+    pub path: String,
+    pub line: usize,
+    /// The status the client last saw. A mismatch means the file changed,
+    /// and nothing is written.
+    pub from: char,
+    pub to: char,
+}
+
+/// One line the server rewrote.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StatusChange {
+    pub path: String,
+    pub line: usize,
+    pub from: char,
+    pub to: char,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskStatusResponse {
+    /// The requested change first, then every task it unblocked or blocked.
+    pub changes: Vec<StatusChange>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowPositionRequest {
+    /// The flow note.
+    pub flow: String,
+    /// The node's line in it.
+    pub line: usize,
+    pub x: i32,
+    pub y: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowPositionResponse {
+    pub saved: bool,
+    pub mtime: f64,
+}

@@ -28,5 +28,5 @@ features = [
   "CustomEventInit", "File", "FileReader", "Blob", "Node", "NodeList",
   "ScrollIntoViewOptions", "ScrollLogicalPosition", "MediaQueryList",
   "MutationObserver", "MutationObserverInit", "PointerEvent", "DomStringList",
-  "Storage", "console",
+  "Storage", "WheelEvent", "console",
 ]

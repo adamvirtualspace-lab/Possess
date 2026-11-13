@@ -12,6 +12,12 @@ pub enum EditError {
     NoTask { line: usize },
     /// The new character isn't in the file's status format.
     UnknownStatus { ch: char },
+    /// The task's status isn't what the caller last saw: the file changed.
+    Stale { line: usize, found: char },
+    /// No such file in the vault.
+    NoFile { path: String },
+    /// The line isn't a node of the note's flow.
+    NoNode { line: usize },
 }
 
 impl std::fmt::Display for EditError {
@@ -21,6 +27,12 @@ impl std::fmt::Display for EditError {
             EditError::UnknownStatus { ch } => {
                 write!(f, "[{ch}] isn't in this file's status format")
             }
+            EditError::Stale { line, found } => write!(
+                f,
+                "the task on line {line} is now [{found}]: the file changed since it was read"
+            ),
+            EditError::NoFile { path } => write!(f, "{path} isn't in the vault"),
+            EditError::NoNode { line } => write!(f, "line {line} isn't a node of this flow"),
         }
     }
 }
@@ -46,5 +58,24 @@ pub fn set_status(src: &str, line: usize, ch: char) -> Result<String, EditError>
     out.push_str(&src[..start]);
     out.push(ch);
     out.push_str(&src[end..]);
+    Ok(out)
+}
+
+/// The source with the flow node on `line` moved to `x, y`.
+///
+/// Everything after the node's link is replaced by ` @ x, y`, so a missing or
+/// broken position is fixed and nothing else on the line or in the file moves.
+pub fn set_flow_position(src: &str, line: usize, x: i32, y: i32) -> Result<String, EditError> {
+    let parsed = parse(src);
+    let node = parsed
+        .flow
+        .as_ref()
+        .and_then(|flow| flow.nodes.iter().find(|n| n.line == line))
+        .ok_or(EditError::NoNode { line })?;
+
+    let mut out = String::with_capacity(src.len() + 16);
+    out.push_str(&src[..node.tail.start]);
+    out.push_str(&format!(" @ {x}, {y}"));
+    out.push_str(&src[node.tail.end..]);
     Ok(out)
 }

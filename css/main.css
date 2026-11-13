@@ -61,6 +61,18 @@
      so the toolbar's scroll-fade needs the sidebar colour at zero alpha. */
   --fade-out: rgba(11, 18, 32, 0);
 
+  /* Node graph: wires, and the strip that tells departments apart */
+  --wire-live: #6f8cff;
+  --wire-waiting: rgba(122, 139, 167, 0.45);
+  --wire-sync: #e07ab4;
+  --graph-grid: rgba(255, 255, 255, 0.035);
+  --dept-1: #e0679a;
+  --dept-2: #e8955a;
+  --dept-3: #59c99a;
+  --dept-4: #6f8cff;
+  --dept-5: #b083f0;
+  --dept-6: #e3c45a;
+
   /* Resizable panes (driven by js/resizer.js, persisted to localStorage) */
   --sidebar-width: 260px;
   --split-pos: 50%;
@@ -115,6 +127,17 @@
   --scrollbar-hover: rgba(15, 25, 40, 0.28);
 
   --fade-out: rgba(238, 242, 247, 0);
+
+  --wire-live: #4a63d9;
+  --wire-waiting: rgba(29, 40, 54, 0.28);
+  --wire-sync: #c2468c;
+  --graph-grid: rgba(15, 25, 40, 0.05);
+  --dept-1: #c94a7f;
+  --dept-2: #c9712f;
+  --dept-3: #2f9e6e;
+  --dept-4: #4a63d9;
+  --dept-5: #8a5bd1;
+  --dept-6: #b0901f;
 }
 
 /* Base Reset */

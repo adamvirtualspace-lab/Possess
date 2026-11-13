@@ -178,6 +178,9 @@ pub fn windows_drives() -> Vec<String> {
 pub struct AppState {
     vault: Arc<RwLock<PathBuf>>,
     pub hook_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Held while the graph reads, changes and writes task files, so two
+    /// status changes can't interleave and lose one another's writes.
+    pub graph_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl AppState {
@@ -185,6 +188,7 @@ impl AppState {
         Self {
             vault: Arc::new(RwLock::new(vault)),
             hook_lock: Arc::new(tokio::sync::Mutex::new(())),
+            graph_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 

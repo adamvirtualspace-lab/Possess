@@ -9,7 +9,9 @@ repo:
 | `SYNTAX.md` | The contract: tasks, `::statusformat::`, people, `^id`s, `needs::` / `sync::` wires, behaviour, `.obsessed/`. |
 | `sample-vault/` | The ep04 / sh040 pipeline, plus `_parser-tests/`: one small file per tricky case, each with an "Expected" note saying what a parser must find. |
 
-Copied from SYNTAX.md **v0.2** (Obsessed commit `51d6de4`, 2026-10-15).
+Copied from SYNTAX.md **v0.2** (Obsessed commit `51d6de4`, 2026-10-15), then
+moved to **v0.3** here (flows as notes with a `::flow::` block, 2026-11-13).
+v0.3 still has to be copied into Obsessed.
 
 ## Rules
 

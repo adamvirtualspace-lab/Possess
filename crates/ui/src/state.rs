@@ -80,6 +80,8 @@ impl Debounce {
 pub enum ViewMode {
     Edit,
     Preview,
+    /// The node graph (see `graph.rs`).
+    Graph,
 }
 
 #[derive(Clone)]
