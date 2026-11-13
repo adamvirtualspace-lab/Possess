@@ -877,3 +877,21 @@ fn previewing_and_following_an_outside_edit() {
     assert_eq!(chain, preview);
     assert_eq!(status_of(&vault, "lighting/sh040", "l2"), ' ');
 }
+
+#[test]
+fn the_wire_index_follows_edits_to_a_note() {
+    let mut vault = Vault::new();
+    vault.insert("a.md", "- [ ] A ^a\n");
+    vault.insert("b.md", "- [-] B ^b\n  - needs:: [[a#^a]]\n");
+    // B's need is rewritten to point elsewhere: A no longer unblocks it.
+    vault.insert("b.md", "- [-] B ^b\n  - needs:: [[c#^c]]\n");
+    let chain = vault.set_status("a", 1, ' ', 'x').unwrap();
+    assert_eq!(chain.changes.len(), 1);
+    // Pointed back at A, and then the note removed entirely.
+    vault.set_status("a", 1, 'x', ' ').unwrap();
+    vault.insert("b.md", "- [-] B ^b\n  - needs:: [[a#^a]]\n");
+    assert_eq!(vault.set_status("a", 1, ' ', 'x').unwrap().changes.len(), 2);
+    vault.set_status("a", 1, 'x', ' ').unwrap();
+    vault.remove("b.md");
+    assert_eq!(vault.set_status("a", 1, ' ', 'x').unwrap().changes.len(), 1);
+}
