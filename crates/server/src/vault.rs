@@ -185,6 +185,12 @@ pub struct AppState {
     /// Fires whenever task statuses or the activity log change, for the
     /// browsers listening on /api/events.
     pub events: tokio::sync::broadcast::Sender<()>,
+    /// Notes the file watcher reported since the engine last caught up.
+    pub pending: Arc<std::sync::Mutex<std::collections::HashSet<PathBuf>>>,
+    /// Wakes the watcher task when `pending` gains paths.
+    pub wake: Arc<tokio::sync::Notify>,
+    /// Wakes the watcher task to watch a different vault.
+    pub vault_changed: Arc<tokio::sync::Notify>,
 }
 
 impl AppState {
@@ -194,6 +200,9 @@ impl AppState {
             hook_lock: Arc::new(tokio::sync::Mutex::new(())),
             engine: Arc::new(tokio::sync::Mutex::new(None)),
             events: tokio::sync::broadcast::channel(16).0,
+            pending: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
+            wake: Arc::new(tokio::sync::Notify::new()),
+            vault_changed: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -209,6 +218,7 @@ impl AppState {
 
     pub fn set_vault(&self, path: PathBuf) {
         *self.vault.write().expect("vault lock poisoned") = path;
+        self.vault_changed.notify_one();
     }
 
     pub fn resolve(&self, filepath: &str) -> AppResult<PathBuf> {
@@ -219,7 +229,7 @@ impl AppState {
     pub async fn engine(&self) -> tokio::sync::MappedMutexGuard<'_, crate::activity::Engine> {
         let mut guard = self.engine.lock().await;
         let vault = self.vault_resolved();
-        if guard.as_ref().is_none_or(|e| e.vault() != vault) {
+        if guard.as_ref().is_none_or(|e| e.dir() != vault) {
             *guard = Some(crate::activity::Engine::open(&vault));
         }
         tokio::sync::MutexGuard::map(guard, |e| e.as_mut().expect("engine was just opened"))

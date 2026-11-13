@@ -26,7 +26,6 @@ use possess_markdown::tasks::{
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
-use crate::graph::load_vault;
 use crate::notes::walk_notes;
 
 /// Oldest entries are dropped past this.
@@ -130,27 +129,35 @@ pub fn log_path(vault: &Path) -> PathBuf {
     vault.join(".obsessed").join("activity.json")
 }
 
-/// What one note looked like last time the engine saw it.
-struct Seen {
-    modified: Option<SystemTime>,
-    len: u64,
-    content: String,
+/// A note's modification time and size when the engine last read it.
+type Stamp = (Option<SystemTime>, u64);
+
+fn stamp(meta: Option<std::fs::Metadata>) -> Stamp {
+    (
+        meta.as_ref().and_then(|m| m.modified().ok()),
+        meta.map_or(0, |m| m.len()),
+    )
 }
 
 /// The engine for one vault.
 pub struct Engine {
-    vault: PathBuf,
+    dir: PathBuf,
     log: LogFile,
-    /// Last content seen per note, by vault key. Empty until the first scan.
-    seen: HashMap<String, Seen>,
-    scanned: bool,
+    /// Every note, parsed, as the engine last saw it: read once when the
+    /// engine opens, then kept current by its own writes and by the edits
+    /// the watcher reports. Nothing re-reads the whole vault per request,
+    /// and there is only ever this one copy in memory.
+    notes: Vault,
+    /// Time and size per note, for the safety rescan.
+    stamps: HashMap<String, Stamp>,
 }
 
 impl Engine {
-    /// Open a vault's engine, reading its log if it has one. A log that
-    /// can't be read is set aside as `activity.json.bad`, not overwritten.
-    pub fn open(vault: &Path) -> Engine {
-        let path = log_path(vault);
+    /// Open a vault's engine: read every note once, and the log if there is
+    /// one. A log that can't be read is set aside as `activity.json.bad`,
+    /// not overwritten.
+    pub fn open(dir: &Path) -> Engine {
+        let path = log_path(dir);
         let log = match std::fs::read_to_string(&path) {
             Ok(text) => match serde_json::from_str(&text) {
                 Ok(log) => log,
@@ -165,20 +172,44 @@ impl Engine {
             },
             Err(_) => LogFile::default(),
         };
-        Engine {
-            vault: vault.to_path_buf(),
+        let mut engine = Engine {
+            dir: dir.to_path_buf(),
             log,
-            seen: HashMap::new(),
-            scanned: false,
+            notes: Vault::new(),
+            stamps: HashMap::new(),
+        };
+        engine.load_all();
+        engine
+    }
+
+    /// Read every note from disk. Used when the engine opens, and to recover
+    /// if a change ever fails halfway.
+    fn load_all(&mut self) {
+        self.notes = Vault::new();
+        self.stamps.clear();
+        for entry in walk_notes(&self.dir) {
+            let Ok(rel) = entry.path().strip_prefix(&self.dir) else {
+                continue;
+            };
+            if let Ok(src) = std::fs::read_to_string(entry.path()) {
+                let key = note_key(&rel.to_string_lossy());
+                self.notes.insert(&key, &src);
+                self.stamps.insert(key, stamp(entry.metadata().ok()));
+            }
         }
     }
 
-    pub fn vault(&self) -> &Path {
-        &self.vault
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    /// The vault as the engine knows it.
+    pub fn notes(&self) -> &Vault {
+        &self.notes
     }
 
     fn save_log(&self) -> std::io::Result<()> {
-        let path = log_path(&self.vault);
+        let path = log_path(&self.dir);
         std::fs::create_dir_all(path.parent().expect("log has a parent"))?;
         let tmp = path.with_extension("json.tmp");
         let json = serde_json::to_string_pretty(&self.log).expect("log serializes");
@@ -199,97 +230,132 @@ impl Engine {
         Ok(self.log.next_id - 1)
     }
 
-    fn remember(&mut self, key: &str, content: &str) {
-        let full = self.vault.join(format!("{key}.md"));
-        let meta = std::fs::metadata(&full).ok();
-        self.seen.insert(
-            key.to_string(),
-            Seen {
-                modified: meta.as_ref().and_then(|m| m.modified().ok()),
-                len: meta.map_or(0, |m| m.len()),
-                content: content.to_string(),
-            },
-        );
-    }
-
-    /// Write every file a chain changed and remember it as seen, so the scan
-    /// doesn't mistake the app's own writes for outside edits.
-    fn write(&mut self, vault: &Vault, changes: &[Change]) -> AppResult<()> {
+    /// Write every note a chain changed in memory. Stamps are taken after
+    /// writing, so the watcher's report of these writes is recognised as the
+    /// app's own and costs no more than a compare.
+    fn write_changed(&mut self, changes: &[Change]) -> AppResult<()> {
         let mut done: Vec<&str> = Vec::new();
         for change in changes {
             if done.contains(&change.path.as_str()) {
                 continue;
             }
             done.push(&change.path);
-            let full = crate::vault::resolve_in_vault(&self.vault, &format!("{}.md", change.path))?;
-            let src = vault
+            let full = crate::vault::resolve_in_vault(&self.dir, &format!("{}.md", change.path))?;
+            let src = self
+                .notes
                 .source(&change.path)
                 .ok_or_else(|| AppError::internal("a changed note vanished from the vault"))?;
-            std::fs::write(full, src)?;
-            self.remember(&change.path, src);
+            std::fs::write(&full, src)?;
+            self.stamps
+                .insert(change.path.clone(), stamp(std::fs::metadata(&full).ok()));
         }
         Ok(())
     }
 
+    /// Changes are made to the one in-memory copy, never a clone. If one
+    /// fails partway (which validation should make impossible), the copy is
+    /// read back from disk so it never disagrees with the files.
+    fn recover<T>(&mut self, result: Result<T, EditError>) -> AppResult<T> {
+        result.map_err(|err| {
+            self.load_all();
+            edit_error(err)
+        })
+    }
+
     // ── Outside edits ──
 
-    /// Look for notes that changed since the engine last saw them, and log
-    /// their status changes as `source` ("outside", or "editor" for the app's
-    /// own markdown editor). The first scan of a vault only takes stock.
-    ///
-    /// Returns whether anything was logged.
-    pub fn scan(&mut self, source: &str) -> AppResult<bool> {
-        let first = !self.scanned;
-        self.scanned = true;
-        let mut changes: Vec<Change> = Vec::new();
-        let mut present: Vec<String> = Vec::new();
+    /// Read one note again if it changed, and return its status changes.
+    /// `None` means the path isn't a note of this vault.
+    fn reread(&mut self, path: &Path) -> Option<Vec<Change>> {
+        let rel = path.strip_prefix(&self.dir).ok()?;
+        let hidden = rel
+            .components()
+            .any(|c| c.as_os_str().to_string_lossy().starts_with('.'));
+        if hidden || rel.extension().is_none_or(|e| e != "md") {
+            return None;
+        }
+        let key = note_key(&rel.to_string_lossy());
+        let Ok(content) = std::fs::read_to_string(path) else {
+            // Deleted (or unreadable): it's no longer part of the vault.
+            self.notes.remove(&key);
+            self.stamps.remove(&key);
+            return Some(Vec::new());
+        };
+        self.stamps
+            .insert(key.clone(), stamp(std::fs::metadata(path).ok()));
+        let changes = match self.notes.source(&key) {
+            Some(old) if old == content => return Some(Vec::new()),
+            Some(old) => status_changes(&key, old, &content),
+            // A new note: nothing to compare its statuses with.
+            None => Vec::new(),
+        };
+        self.notes.insert(&key, &content);
+        Some(changes)
+    }
 
-        for entry in walk_notes(&self.vault) {
-            let Ok(rel) = entry.path().strip_prefix(&self.vault) else {
+    /// Re-read the notes the file watcher reported, and log their status
+    /// changes as `source` ("outside", or "editor" for the app's own
+    /// markdown editor). A reported folder (a rename, say) means a full
+    /// rescan. Returns whether anything was logged.
+    pub fn scan_paths(&mut self, paths: &[PathBuf], source: &str) -> AppResult<bool> {
+        let mut changes = Vec::new();
+        for path in paths {
+            if path.is_dir() {
+                return self.scan(source);
+            }
+            if let Some(found) = self.reread(path) {
+                changes.extend(found);
+            }
+        }
+        self.log_outside(source, changes)
+    }
+
+    /// Check every note's time and size, and re-read only the ones that
+    /// changed: the safety net under the file watcher, and the fallback on a
+    /// platform without one. Returns whether anything was logged.
+    pub fn scan(&mut self, source: &str) -> AppResult<bool> {
+        let mut changes = Vec::new();
+        let mut present = std::collections::HashSet::new();
+        let dir = self.dir.clone();
+        for entry in walk_notes(&dir) {
+            let Ok(rel) = entry.path().strip_prefix(&dir) else {
                 continue;
             };
             let key = note_key(&rel.to_string_lossy());
-            present.push(key.clone());
-            let meta = entry.metadata().ok();
-            let modified = meta.as_ref().and_then(|m| m.modified().ok());
-            let len = meta.map_or(0, |m| m.len());
-            // Same size and time means unchanged, unless the time is recent:
+            let now = stamp(entry.metadata().ok());
+            // Same time and size means unchanged, unless the time is recent:
             // ticking [ ] to [x] keeps the size, and on coarse file systems
             // two quick edits can share a timestamp.
-            let recent = modified
+            let recent = now
+                .0
                 .and_then(|m| m.elapsed().ok())
                 .is_none_or(|age| age < RECENT);
-            if let Some(seen) = self.seen.get(&key) {
-                if seen.modified == modified && seen.len == len && !recent {
-                    continue;
+            let unchanged = self.stamps.get(&key) == Some(&now) && !recent;
+            present.insert(key);
+            if !unchanged {
+                if let Some(found) = self.reread(entry.path()) {
+                    changes.extend(found);
                 }
             }
-            let Ok(content) = std::fs::read_to_string(entry.path()) else {
-                continue;
-            };
-            if !first {
-                if let Some(seen) = self.seen.get(&key) {
-                    if seen.content != content {
-                        changes.extend(status_changes(&key, &seen.content, &content));
-                    }
-                }
-            }
-            self.seen.insert(
-                key,
-                Seen {
-                    modified,
-                    len,
-                    content,
-                },
-            );
         }
-        self.seen.retain(|key, _| present.contains(key));
+        let gone: Vec<String> = self
+            .stamps
+            .keys()
+            .filter(|k| !present.contains(*k))
+            .cloned()
+            .collect();
+        for key in gone {
+            self.notes.remove(&key);
+            self.stamps.remove(&key);
+        }
+        self.log_outside(source, changes)
+    }
 
+    fn log_outside(&mut self, source: &str, changes: Vec<Change>) -> AppResult<bool> {
         if changes.is_empty() {
             return Ok(false);
         }
-        let vault = load_vault(&self.vault)?;
-        let would = vault.preview(&changes);
+        let would = self.notes.preview(&changes);
         self.push(LogEntry {
             id: 0,
             time: now(),
@@ -344,7 +410,7 @@ impl Engine {
         from: char,
         to: char,
     ) -> AppResult<ActivityResult> {
-        let mut vault = load_vault(&self.vault)?;
+        let vault = &self.notes;
         let key = note_key(path);
 
         // A blocked task waiting on its wires is the wires' to change.
@@ -362,8 +428,17 @@ impl Engine {
                 }
             }
         }
-        let chain = vault.set_status(&key, line, from, to).map_err(edit_error)?;
-        self.write(&vault, &chain.changes)?;
+        let result = self.notes.set_status(&key, line, from, to);
+        let chain = match result {
+            // A stale or impossible click changed nothing: no recovery needed.
+            Err(
+                err @ (EditError::Stale { .. }
+                | EditError::NoFile { .. }
+                | EditError::NoTask { .. }),
+            ) => return Err(edit_error(err)),
+            other => self.recover(other)?,
+        };
+        self.write_changed(&chain.changes)?;
         let id = self.log_chain("click", &chain, None)?;
         Ok(self.result(Some(id), &chain.changes))
     }
@@ -381,8 +456,7 @@ impl Engine {
             .ok_or_else(|| AppError::conflict("There is nothing to undo."))?;
         let entry = self.log.entries[index].clone();
         let changes: Vec<Change> = entry.changes.iter().map(from_log).collect();
-        let mut vault = load_vault(&self.vault)?;
-        let reverted = vault.revert(&changes).map_err(|err| match err {
+        let reverted = self.notes.revert(&changes).map_err(|err| match err {
             EditError::Stale { line, found } => {
                 let path = changes
                     .iter()
@@ -394,7 +468,7 @@ impl Engine {
             }
             other => edit_error(other),
         })?;
-        self.write(&vault, &reverted)?;
+        self.write_changed(&reverted)?;
         self.log.entries[index].undone = Some(true);
         let chain = Chain {
             changes: reverted,
@@ -423,7 +497,7 @@ impl Engine {
     /// as they are now. Logged as an `apply` chain, which can be undone.
     pub fn apply(&mut self, id: u64) -> AppResult<ActivityResult> {
         let index = self.pending(id)?;
-        let mut vault = load_vault(&self.vault)?;
+        let vault = &self.notes;
         // Only the edits that still hold set anything off.
         let still: Vec<Change> = self.log.entries[index]
             .changes
@@ -435,8 +509,9 @@ impl Engine {
                 (now == c.to).then_some(Change { line, ..c })
             })
             .collect();
-        let chain = vault.follow(&still).map_err(edit_error)?;
-        self.write(&vault, &chain.changes)?;
+        let result = self.notes.follow(&still);
+        let chain = self.recover(result)?;
+        self.write_changed(&chain.changes)?;
         self.log.entries[index].state = Some("applied".into());
         let id = if chain.changes.is_empty() {
             self.save_log()?;
@@ -458,7 +533,7 @@ impl Engine {
 
     pub fn activity(&self) -> AppResult<ActivityResponse> {
         // Symbols from each note's current status format.
-        let vault = load_vault(&self.vault)?;
+        let vault = &self.notes;
         let symbol = |path: &str, ch: char| {
             vault
                 .file(path)
@@ -563,43 +638,131 @@ use tokio_stream::{Stream, StreamExt};
 
 use crate::vault::AppState;
 
-/// How often the vault is checked for edits made outside the app.
-const SCAN_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+/// How long to let a burst of file events settle (a `git pull`, an editor
+/// that writes a temp file and renames it) before reading anything.
+const DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(150);
+/// The safety rescan under the file watcher: file times and sizes only.
+const RESCAN: std::time::Duration = std::time::Duration::from_secs(60);
+/// The rescan when the platform can't watch files at all.
+const FALLBACK_RESCAN: std::time::Duration = std::time::Duration::from_secs(2);
 
-/// Check the vault for outside edits, forever. Cheap: a note is only read
-/// when its size or modification time changed.
-pub async fn watch(state: AppState) {
-    let mut ticker = tokio::time::interval(SCAN_EVERY);
-    loop {
-        ticker.tick().await;
-        let logged = {
-            let mut engine = state.engine().await;
-            match engine.scan("outside") {
-                Ok(logged) => logged,
-                Err(err) => {
-                    eprintln!(
-                        "[PossessApp] Could not check the vault for edits: {}",
-                        err.detail
-                    );
-                    false
-                }
-            }
-        };
-        if logged {
-            state.notify();
+/// Would this path's change matter? Notes only, and nothing hidden, so the
+/// app's own `.obsessed/activity.json` writes never wake the watcher. A path
+/// with no extension may be a folder (renamed or moved), which does matter.
+fn worth_waking_for(dir: &Path, path: &Path) -> bool {
+    let Ok(rel) = path.strip_prefix(dir) else {
+        return false;
+    };
+    let hidden = rel
+        .components()
+        .any(|c| c.as_os_str().to_string_lossy().starts_with('.'));
+    !hidden && rel.extension().is_none_or(|e| e == "md")
+}
+
+/// Start the OS file watcher on `dir`. Its callback runs on the watcher's
+/// own thread and only records paths and wakes the async side.
+fn start_watcher(dir: &Path, state: &AppState) -> Option<notify::RecommendedWatcher> {
+    use notify::Watcher;
+    let pending = state.pending.clone();
+    let wake = state.wake.clone();
+    let root = dir.to_path_buf();
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let Ok(event) = res else { return };
+        if event.kind.is_access() {
+            return;
+        }
+        let paths: Vec<PathBuf> = event
+            .paths
+            .into_iter()
+            .filter(|p| worth_waking_for(&root, p))
+            .collect();
+        if paths.is_empty() {
+            return;
+        }
+        pending.lock().expect("pending lock").extend(paths);
+        wake.notify_one();
+    })
+    .map_err(|err| eprintln!("[PossessApp] No file watcher ({err}); checking every 2s instead"))
+    .ok()?;
+    match watcher.watch(dir, notify::RecursiveMode::Recursive) {
+        Ok(()) => Some(watcher),
+        Err(err) => {
+            eprintln!(
+                "[PossessApp] Can't watch {} ({err}); checking every 2s instead",
+                dir.display()
+            );
+            None
         }
     }
 }
 
-/// Run `action` on the engine after catching up on outside edits, so they
-/// are logged as such rather than folded into the app's own change.
-async fn act<T>(
+/// Catch the engine up on the paths the watcher reported.
+pub(crate) fn catch_up(state: &AppState, engine: &mut Engine) -> AppResult<bool> {
+    let paths: Vec<PathBuf> = state
+        .pending
+        .lock()
+        .expect("pending lock")
+        .drain()
+        .collect();
+    if paths.is_empty() {
+        return Ok(false);
+    }
+    engine.scan_paths(&paths, "outside")
+}
+
+/// Notice edits made outside the app, for as long as the server runs.
+///
+/// Event-driven: at idle this task sleeps, waking once a minute for a
+/// rescan that only compares file times and sizes. Each event is let settle
+/// for a moment, then only the notes it named are re-read.
+pub async fn watch(state: AppState) {
+    loop {
+        let dir = state.vault_resolved();
+        let watcher = start_watcher(&dir, &state);
+        let every = if watcher.is_some() {
+            RESCAN
+        } else {
+            FALLBACK_RESCAN
+        };
+        let mut rescan = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
+        rescan.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+        loop {
+            let logged = tokio::select! {
+                // A different vault: watch that one instead.
+                _ = state.vault_changed.notified() => break,
+                _ = state.wake.notified() => {
+                    tokio::time::sleep(DEBOUNCE).await;
+                    let mut engine = state.engine().await;
+                    catch_up(&state, &mut engine)
+                }
+                _ = rescan.tick() => {
+                    let mut engine = state.engine().await;
+                    catch_up(&state, &mut engine).and_then(|a| Ok(engine.scan("outside")? || a))
+                }
+            };
+            match logged {
+                Ok(true) => state.notify(),
+                Ok(false) => {}
+                Err(err) => eprintln!(
+                    "[PossessApp] Could not check the vault for edits: {}",
+                    err.detail
+                ),
+            }
+        }
+        drop(watcher);
+    }
+}
+
+/// Run `action` on the engine after catching up on reported edits, so they
+/// are logged as outside edits rather than folded into the app's change.
+pub(crate) async fn act<T>(
     state: &AppState,
     action: impl FnOnce(&mut Engine) -> AppResult<T>,
 ) -> AppResult<T> {
     let result = {
         let mut engine = state.engine().await;
-        engine.scan("outside")?;
+        catch_up(state, &mut engine)?;
         action(&mut engine)
     };
     state.notify();
@@ -765,6 +928,10 @@ mod tests {
             "- [ ] Render lighting",
             "- [?] Render lighting",
         );
+        // The handler always catches up on reported edits first.
+        engine
+            .scan_paths(&[base.join("lighting/sh040.md")], "outside")
+            .unwrap();
         let err = engine.undo().unwrap_err();
         assert_eq!(err.status.as_u16(), 409);
         assert!(err.detail.contains("lighting/sh040"), "{}", err.detail);
@@ -875,6 +1042,117 @@ mod tests {
             Some("dismissed")
         );
         assert!(read(&base, "lighting/sh040.md").contains("- [-] Render lighting pass"));
+        std::fs::remove_dir_all(base).ok();
+    }
+
+    /// 230 copies of the sample pipeline (2,070 notes), each copy's wires
+    /// pointing within itself, like a studio vault with many shots.
+    fn large_vault() -> PathBuf {
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sample-vault");
+        let dst = std::env::temp_dir().join(format!("possess-large-{}", uuid::Uuid::new_v4()));
+        let notes: Vec<(String, String)> = walkdir::WalkDir::new(&src)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+            .filter_map(|e| {
+                let rel = e
+                    .path()
+                    .strip_prefix(&src)
+                    .ok()?
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let skip = rel.starts_with("_parser-tests")
+                    || rel.starts_with("flows")
+                    || rel == "README.md";
+                (!skip).then(|| (rel, std::fs::read_to_string(e.path()).unwrap()))
+            })
+            .collect();
+        for copy in 0..230 {
+            for (rel, text) in &notes {
+                let mut out = text.clone();
+                for folder in [
+                    "anim", "audio", "comp", "delivery", "fx", "lighting", "review", "rig",
+                ] {
+                    out = out.replace(&format!("[[{folder}/"), &format!("[[s{copy}/{folder}/"));
+                }
+                let path = dst.join(format!("s{copy}")).join(rel);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, out).unwrap();
+            }
+        }
+        crate::vault::canonical(&dst)
+    }
+
+    /// Timed against 2,070 notes. The bounds are loose (this runs
+    /// unoptimised, on whatever machine CI has): they catch work that grows
+    /// with the vault creeping back into a click, not small slowdowns.
+    #[test]
+    fn a_large_vault_stays_fast() {
+        use std::time::{Duration, Instant};
+        let base = large_vault();
+        let time = |what: &str, limit: Duration, run: &mut dyn FnMut()| {
+            let start = Instant::now();
+            run();
+            let took = start.elapsed();
+            eprintln!("  {what}: {took:?}");
+            assert!(took < limit, "{what} took {took:?}, over {limit:?}");
+        };
+
+        let mut engine = None;
+        time(
+            "open (read and parse every note)",
+            Duration::from_secs(10),
+            &mut || {
+                engine = Some(Engine::open(&base));
+            },
+        );
+        let mut engine = engine.unwrap();
+        assert_eq!(engine.notes().files().count(), 2070);
+
+        time("click", Duration::from_millis(250), &mut || {
+            engine.set_status("s7/anim/sh040", 10, ' ', 'x').unwrap();
+        });
+        time(
+            "click that unblocks",
+            Duration::from_millis(250),
+            &mut || {
+                let result = engine
+                    .set_status("s7/fx/sh040-water", 10, ' ', 'x')
+                    .unwrap();
+                assert_eq!(result.changes.len(), 2);
+            },
+        );
+        time("undo", Duration::from_millis(250), &mut || {
+            engine.undo().unwrap();
+        });
+
+        edit(
+            &base,
+            "s9/audio/ep04.md",
+            "- [ ] Final mix",
+            "- [?] Final mix",
+        );
+        time(
+            "re-read one reported note",
+            Duration::from_millis(100),
+            &mut || {
+                assert!(engine
+                    .scan_paths(&[base.join("s9/audio/ep04.md")], "outside")
+                    .unwrap());
+            },
+        );
+        time(
+            "full rescan, nothing changed",
+            Duration::from_secs(5),
+            &mut || {
+                engine.scan("outside").unwrap();
+            },
+        );
+        time("whole-vault graph", Duration::from_secs(10), &mut || {
+            let graph = crate::graph::build(engine.notes(), None).unwrap();
+            // Notes with tasks: each copy's review reply has none.
+            assert_eq!(graph.nodes.len(), 1840);
+        });
         std::fs::remove_dir_all(base).ok();
     }
 
