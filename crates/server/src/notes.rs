@@ -115,7 +115,8 @@ pub async fn list_folders(
             Ok(p) if p.as_os_str().is_empty() => ".".to_string(),
             // Normalised to forward slashes so the client builds one consistent
             // path shape regardless of platform.
-            Ok(p) => p.components()
+            Ok(p) => p
+                .components()
                 .map(|c| c.as_os_str().to_string_lossy())
                 .collect::<Vec<_>>()
                 .join("/"),
@@ -135,7 +136,10 @@ pub async fn list_folders(
         files.sort_by(|a, b| a.0.cmp(&b.0));
     }
 
-    Ok(Json(FoldersResponse { base: base.display().to_string(), folders }))
+    Ok(Json(FoldersResponse {
+        base: base.display().to_string(),
+        folders,
+    }))
 }
 
 pub async fn get_file(
@@ -167,12 +171,12 @@ pub async fn save_file(
     // changed outside the app before this save is logged as that first.
     let logged = {
         let mut engine = state.engine().await;
-        engine.scan("outside")?;
+        crate::activity::catch_up(&state, &mut engine)?;
         if let Some(parent) = full.parent() {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&full, &body.content)?;
-        engine.scan("editor")?
+        engine.scan_paths(std::slice::from_ref(&full), "editor")?
     };
     if logged {
         state.notify();
@@ -193,7 +197,11 @@ pub async fn create_entry(
     Json(body): Json<CreateRequest>,
 ) -> AppResult<Json<CreateResponse>> {
     let kind = body.kind.unwrap_or_default().trim().to_string();
-    let kind = if kind.is_empty() { "note".to_string() } else { kind };
+    let kind = if kind.is_empty() {
+        "note".to_string()
+    } else {
+        kind
+    };
     let parent = trim_rel(body.parent.as_deref().unwrap_or(""));
     let mut name = body.name.unwrap_or_default().trim().to_string();
 
@@ -207,7 +215,11 @@ pub async fn create_entry(
         name.push_str(".md");
     }
 
-    let rel = if parent.is_empty() { name.clone() } else { format!("{parent}/{name}") };
+    let rel = if parent.is_empty() {
+        name.clone()
+    } else {
+        format!("{parent}/{name}")
+    };
     let full = state.resolve(&rel)?;
 
     if full.exists() {
@@ -254,7 +266,11 @@ pub async fn rename_entry(
         Some((parent, _)) => parent.to_string(),
         None => String::new(),
     };
-    let dest_rel = if parent_rel.is_empty() { name.clone() } else { format!("{parent_rel}/{name}") };
+    let dest_rel = if parent_rel.is_empty() {
+        name.clone()
+    } else {
+        format!("{parent_rel}/{name}")
+    };
     let dest = state.resolve(&dest_rel)?;
 
     // Case-only renames land on the same inode on case-insensitive filesystems,
@@ -326,7 +342,11 @@ pub async fn delete_entry(
         serde_json::to_string_pretty(&manifest).unwrap_or_default(),
     )?;
 
-    Ok(Json(DeleteResponse { deleted: rel, kind, token }))
+    Ok(Json(DeleteResponse {
+        deleted: rel,
+        kind,
+        token,
+    }))
 }
 
 /// Put a trashed note or folder back where it came from.
@@ -348,7 +368,9 @@ pub async fn restore_entry(
         .map_err(|_| AppError::not_found(format!("Nothing to restore for {token}")))?;
 
     if !holding.starts_with(&trash) || !holding.is_dir() {
-        return Err(AppError::not_found(format!("Nothing to restore for {token}")));
+        return Err(AppError::not_found(format!(
+            "Nothing to restore for {token}"
+        )));
     }
 
     let manifest: TrashManifest = std::fs::read_to_string(holding.join(TRASH_MANIFEST))
@@ -364,7 +386,9 @@ pub async fn restore_entry(
 
     let source = holding.join(name);
     if !source.exists() {
-        return Err(AppError::not_found(format!("Nothing to restore for {token}")));
+        return Err(AppError::not_found(format!(
+            "Nothing to restore for {token}"
+        )));
     }
 
     if let Some(parent) = target.parent() {
@@ -373,7 +397,10 @@ pub async fn restore_entry(
     move_path(&source, &target)?;
     let _ = std::fs::remove_dir_all(&holding);
 
-    Ok(Json(RestoreResponse { restored: manifest.path.clone(), kind: manifest.kind.clone() }))
+    Ok(Json(RestoreResponse {
+        restored: manifest.path.clone(),
+        kind: manifest.kind.clone(),
+    }))
 }
 
 #[derive(Deserialize)]
@@ -390,7 +417,11 @@ pub async fn get_status(
     let full = state.resolve(&params.filepath)?;
 
     if !full.is_file() {
-        return Ok(Json(StatusResponse { exists: false, changed: false, mtime: None }));
+        return Ok(Json(StatusResponse {
+            exists: false,
+            changed: false,
+            mtime: None,
+        }));
     }
 
     let server_mtime = mtime_secs(&full);

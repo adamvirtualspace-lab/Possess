@@ -14,7 +14,7 @@
 //! started the chain doesn't count, so a chain can still send its own
 //! starting task somewhere once.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::edit::{self, EditError};
 use super::format::Role;
@@ -133,20 +133,29 @@ impl Vault {
         Ok(chain)
     }
 
-    /// What [`Vault::follow`] would do, without changing anything.
-    pub fn preview(&self, started_by: &[Change]) -> Chain {
-        let mut copy = self.clone();
-        copy.follow(started_by).unwrap_or_default()
+    /// What [`Vault::follow`] would do, leaving the vault as it was.
+    ///
+    /// Runs the chain for real and then reverts exactly what it did, rather
+    /// than following a copy of the vault: a big vault is never held twice
+    /// in memory. Reverting a chain that was just made can't fail.
+    pub fn preview(&mut self, started_by: &[Change]) -> Chain {
+        let chain = self.follow(started_by).unwrap_or_default();
+        let undone = self.revert(&chain.changes);
+        debug_assert!(undone.is_ok(), "a chain just made always reverts");
+        chain
     }
 
-    /// Put changes back, newest first. All or nothing: if any task no longer
-    /// shows what its change set (it was edited since), nothing changes and
-    /// the error names it.
+    /// Put changes back, newest first. All or nothing: every line is checked
+    /// before anything is written, so if one no longer shows what its change
+    /// set (it was edited since), nothing changes and the error names it.
     pub fn revert(&mut self, changes: &[Change]) -> Result<Vec<Change>, EditError> {
-        let mut copy = self.clone();
-        let mut reverted = Vec::new();
+        // Check first. A task can appear twice in one chain (the task that
+        // started it, sent back), so track what each will show as the plan
+        // is walked. Status edits never move lines.
+        let mut showing: HashMap<(String, usize), char> = HashMap::new();
+        let mut plan: Vec<(String, usize, char)> = Vec::new();
         for change in changes.iter().rev() {
-            let line = copy
+            let line = self
                 .find_task_line(
                     &change.path,
                     change.line,
@@ -154,21 +163,28 @@ impl Vault {
                     &change.text,
                 )
                 .ok_or(EditError::NoTask { line: change.line })?;
-            let current = copy
-                .file(&change.path)
-                .and_then(|f| f.task_at_line(line))
-                .map(|t| t.ch)
-                .ok_or(EditError::NoTask { line })?;
+            let slot = (change.path.clone(), line);
+            let current = match showing.get(&slot) {
+                Some(ch) => *ch,
+                None => self
+                    .file(&change.path)
+                    .and_then(|f| f.task_at_line(line))
+                    .map(|t| t.ch)
+                    .ok_or(EditError::NoTask { line })?,
+            };
             if current != change.to {
                 return Err(EditError::Stale {
                     line,
                     found: current,
                 });
             }
-            reverted.push(copy.write_status(&change.path, line, change.from)?);
+            showing.insert(slot, change.from);
+            plan.push((change.path.clone(), line, change.from));
         }
-        *self = copy;
-        Ok(reverted)
+        // Then write.
+        plan.into_iter()
+            .map(|(path, line, to)| self.write_status(&path, line, to))
+            .collect()
     }
 
     /// The tasks whose wires react to `event`, and the status each should
@@ -191,10 +207,18 @@ impl Vault {
                 .is_some_and(|(p, t)| p == event.path && t.id.as_deref() == Some(id))
         };
 
+        // Only the tasks whose wires point here, from the reverse index:
+        // the cost follows the wires, not the size of the vault.
+        let Some(sources) = self.links_to.get(&(event.path.clone(), id.to_string())) else {
+            return Vec::new();
+        };
         let mut out = Vec::new();
-        for (other_path, other) in &self.files {
+        for (other_path, line) in sources {
+            let Some(other) = self.files.get(other_path) else {
+                continue;
+            };
             let format = &other.format;
-            for waiting in &other.tasks {
+            if let Some(waiting) = other.task_at_line(*line) {
                 let role = format.role_of(waiting.ch);
 
                 if waiting.needs.iter().any(|l| points_here(other_path, l)) {

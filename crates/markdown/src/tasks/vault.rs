@@ -4,7 +4,7 @@
 //! don't add up. Changing statuses, and what a change sets off, is
 //! `chain.rs`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::format::Role;
 use super::parse::{parse, ParsedFile, Task, TaskRef};
@@ -43,6 +43,14 @@ pub struct Vault {
     /// the form `[[path#^id]]` links use.
     pub(super) files: BTreeMap<String, ParsedFile>,
     pub(super) sources: BTreeMap<String, String>,
+    /// Reverse index of wires: for each `(note, ^id)`, the tasks whose
+    /// `needs::` or `sync::` point at it, as `(note, line)`. Ordered, so a
+    /// chain reacts in the same order every time. Status edits never move
+    /// lines, so it stays valid while a chain runs.
+    pub(super) links_to: HashMap<(String, String), BTreeSet<(String, usize)>>,
+    /// What each note added to `links_to`, so replacing a note re-indexes
+    /// only that note.
+    contributed: HashMap<String, Vec<(String, String)>>,
 }
 
 /// `anim\sh040.md` → `anim/sh040`.
@@ -59,13 +67,53 @@ impl Vault {
     /// Parse and add (or replace) one file.
     pub fn insert(&mut self, path: &str, src: &str) {
         let key = key(path);
-        self.files.insert(key.clone(), parse(src));
+        let file = parse(src);
+        self.unindex(&key);
+        self.index(&key, &file);
+        self.files.insert(key.clone(), file);
         self.sources.insert(key, src.to_string());
     }
 
     pub fn remove(&mut self, path: &str) {
-        self.files.remove(&key(path));
-        self.sources.remove(&key(path));
+        let key = key(path);
+        self.unindex(&key);
+        self.files.remove(&key);
+        self.sources.remove(&key);
+    }
+
+    fn index(&mut self, key: &str, file: &ParsedFile) {
+        let mut targets = Vec::new();
+        for task in &file.tasks {
+            for link in task.needs.iter().chain(&task.sync) {
+                let target_path = link
+                    .path
+                    .as_deref()
+                    .map_or_else(|| key.to_string(), self::key);
+                let target = (target_path, link.id.clone());
+                self.links_to
+                    .entry(target.clone())
+                    .or_default()
+                    .insert((key.to_string(), task.line));
+                targets.push(target);
+            }
+        }
+        if !targets.is_empty() {
+            self.contributed.insert(key.to_string(), targets);
+        }
+    }
+
+    fn unindex(&mut self, key: &str) {
+        let Some(targets) = self.contributed.remove(key) else {
+            return;
+        };
+        for target in targets {
+            if let Some(sources) = self.links_to.get_mut(&target) {
+                sources.retain(|(path, _)| path != key);
+                if sources.is_empty() {
+                    self.links_to.remove(&target);
+                }
+            }
+        }
     }
 
     pub fn file(&self, path: &str) -> Option<&ParsedFile> {
