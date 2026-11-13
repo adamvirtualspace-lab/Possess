@@ -1,0 +1,355 @@
+/* ── Graph view (crates/ui/src/graph.rs) ──
+ *
+ * Node geometry here must match the constants in graph.rs (NODE_W, HEAD_H,
+ * ROW_H, FOOT_H): wires are drawn to computed points, not measured ones.
+ */
+
+/* The editor's toolbar stays up in Preview, where its buttons still apply.
+   Over the graph it does nothing, so the whole editor host goes. */
+.viewport.is-graph #editor-host {
+  display: none;
+}
+
+.graph-panel {
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  background: var(--bg-root);
+}
+
+.graph-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-color);
+  min-height: 48px;
+}
+
+.graph-title {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.82rem;
+  color: var(--text-main);
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.graph-kind {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+
+.graph-error {
+  flex: 1;
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.graph-label {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  align-self: center;
+  margin-right: 4px;
+}
+
+.graph-canvas {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  background-image: radial-gradient(circle, var(--graph-grid) 1.2px, transparent 1.4px);
+}
+
+.graph-canvas.is-panning {
+  cursor: grabbing;
+}
+
+.graph-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+.graph-wires {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.wire {
+  fill: none;
+  stroke-width: 2.2;
+}
+
+.wire-live {
+  stroke: var(--wire-live);
+}
+
+.wire-waiting {
+  stroke: var(--wire-waiting);
+}
+
+.wire-sync {
+  stroke: var(--wire-sync);
+  stroke-dasharray: 6 5;
+}
+
+.graph-wires .pin {
+  fill: var(--bg-sidebar);
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+}
+
+/* ── Nodes ── */
+
+.graph-node {
+  position: absolute;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 6px 18px var(--shadow-soft);
+  cursor: default;
+  user-select: none;
+}
+
+.graph-node.is-dragging {
+  box-shadow: 0 12px 28px var(--shadow-menu);
+  z-index: 2;
+}
+
+.graph-node.is-missing {
+  border-style: dashed;
+  opacity: 0.7;
+}
+
+.graph-node-head {
+  height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-faint);
+  cursor: grab;
+}
+
+.graph-node-strip {
+  width: 5px;
+  height: 28px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.graph-node-names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.graph-node-title {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-node-path {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-node-head:hover .graph-node-title {
+  color: var(--accent-hover);
+}
+
+.graph-node-warn,
+.graph-row-warn {
+  color: var(--match-text);
+  font-size: 0.8rem;
+}
+
+.graph-row {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 0.8rem;
+  color: var(--text-main);
+}
+
+.graph-row.is-done .graph-task-text {
+  color: var(--text-muted);
+}
+
+.graph-row.is-locked .graph-task-text {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.graph-row-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.graph-status {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 0.9rem;
+  line-height: 1;
+  color: inherit;
+  cursor: context-menu;
+}
+
+.graph-status.is-clickable {
+  cursor: pointer;
+}
+
+.graph-status.is-clickable:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-wash);
+}
+
+.graph-task-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-people {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.68rem;
+  color: var(--match-text);
+  white-space: nowrap;
+}
+
+.graph-lock {
+  font-size: 0.72rem;
+}
+
+.graph-compact {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 0.9rem;
+  letter-spacing: 0.15em;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.graph-node-foot {
+  height: 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 12px;
+  border-top: 1px solid var(--border-faint);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.66rem;
+  color: var(--text-muted);
+}
+
+.graph-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+/* ── Status menu ── */
+
+.graph-menu {
+  position: absolute;
+  z-index: 20;
+  min-width: 250px;
+  padding: 6px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px var(--shadow-menu);
+}
+
+.graph-menu-heading {
+  padding: 6px 8px 2px;
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.graph-menu-task {
+  padding: 0 8px 6px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--text-strong);
+  border-bottom: 1px solid var(--border-faint);
+  margin-bottom: 4px;
+}
+
+.graph-menu-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 22px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.graph-menu-item:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.graph-menu-item.is-current {
+  background: var(--accent-select);
+  color: var(--text-strong);
+}
+
+.graph-menu-item:disabled:not(.is-current) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.graph-menu-char,
+.graph-menu-role {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}

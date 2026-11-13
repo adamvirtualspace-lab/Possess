@@ -5,6 +5,9 @@ embedded in it), seeds a small vault, and drives the real UI in Chromium:
 
   open a note -> edit it -> autosave reaches disk -> preview renders it
   -> create a note via the native prompt -> switching notes saves the edit
+  -> open the sample flow in the Graph view -> ticking two tasks unblocks
+  a third, on screen and on disk -> the status menu -> dragging a node saves
+  its position in the flow note -> clicking a node title opens the note
 
 Any uncaught page error or console error fails the run. Screenshots go to
 --out so a failure in CI can be looked at, not just read about.
@@ -143,6 +146,88 @@ def run(page: Page, vault: Path, out: Path) -> None:
     expect(welcome_item).to_have_class(re.compile(r"\bactive\b"))
     snapshot(page, out / "2-editor.png")
 
+    graph(page, vault, out)
+
+
+def graph_status(page: Page, node: str, line: int):
+    return page.locator(
+        f'.graph-node[data-path="{node}"] .graph-row[data-line="{line}"] .graph-status'
+    )
+
+
+def graph(page: Page, vault: Path, out: Path) -> None:
+    """Milestone 4: the sample vault's ep04-sh040 flow in the Graph view."""
+    step = lambda msg: print(f"  - {msg}", flush=True)  # noqa: E731
+
+    step("a flow note opens as a graph")
+    page.locator(".folder-header", has_text="flows").click()
+    page.locator('.file-item[data-path="flows/ep04-sh040.md"]').click()
+    expect(page.locator("#current-file-name")).to_contain_text("ep04-sh040")
+    page.locator("#btn-graph").click()
+    expect(page.locator(".graph-node")).to_have_count(9)
+    expect(page.locator(".graph-title")).to_contain_text("flows/ep04-sh040")
+    expect(page.locator("#editor-host")).to_be_hidden()
+
+    step("ticking Polish pass and Cache water to disk unblocks Render lighting pass")
+    lighting = graph_status(page, "lighting/sh040", 8)
+    expect(lighting).to_have_text("⚪")
+    for node in ("anim/sh040", "fx/sh040-water"):
+        # Open → ready to check → done: a click walks the file's order.
+        for symbol in ("❓", "✅"):
+            graph_status(page, node, 10).click()
+            expect(graph_status(page, node, 10)).to_have_text(symbol)
+        if node == "anim/sh040":
+            expect(lighting).to_have_text("⚪")  # still waiting for the water cache
+    expect(lighting).to_have_text("🔳")
+    lighting_row = page.locator('.graph-node[data-path="lighting/sh040"] .graph-row[data-line="8"]')
+    expect(lighting_row).not_to_have_class(re.compile(r"\bis-locked\b"))
+    wait_for_file(vault / "lighting" / "sh040.md", "- [ ] Render lighting pass", 3)
+    wait_for_file(vault / "anim" / "sh040.md", "- [x] Polish pass", 3)
+    snapshot(page, out / "3-graph.png")
+
+    step("right-clicking a task waiting on its wires shows every status, greyed")
+    graph_status(page, "comp/sh040", 16).click(button="right")
+    menu = page.locator(".graph-menu")
+    expect(menu).to_be_visible()
+    expect(menu.locator(".graph-menu-item")).to_have_count(6)
+    expect(menu.locator(".graph-menu-heading", has_text="Right-click only")).to_be_visible()
+    expect(menu.locator(".graph-menu-item", has_text="retake")).to_be_disabled()
+    page.locator(".graph-canvas").click(position={"x": 8, "y": 8})
+    expect(menu).to_have_count(0)
+
+    step("dragging a node saves its position in the flow note")
+    head = page.locator('.graph-node[data-path="audio/ep04"] .graph-node-head')
+    box = head.bounding_box()
+    assert box, "the audio node isn't on screen"
+    x, y = box["x"] + 60, box["y"] + box["height"] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + 40, y + 60, steps=8)
+    page.mouse.up()
+    flow = vault / "flows" / "ep04-sh040.md"
+    deadline = time.monotonic() + 3
+    while "[[audio/ep04]] @ 960, 380" in flow.read_text(encoding="utf-8"):
+        assert time.monotonic() < deadline, "the dragged position was never saved"
+        time.sleep(0.1)
+    moved = re.search(r"\[\[audio/ep04\]\] @ (-?\d+), (-?\d+)", flow.read_text(encoding="utf-8"))
+    assert moved, flow.read_text(encoding="utf-8")
+    step(f"  saved as @ {moved[1]}, {moved[2]}")
+
+    step("compact nodes")
+    page.get_by_role("button", name="Compact", exact=True).click()
+    expect(page.locator(".graph-compact")).to_have_count(9)
+    snapshot(page, out / "4-compact.png")
+    page.get_by_role("button", name="Tasks", exact=True).click()
+
+    step("clicking a node title opens the note")
+    page.locator('.graph-node[data-path="lighting/sh040"] .graph-node-title').click()
+    expect(page.locator("#current-file-name")).to_contain_text("lighting/sh040")
+    expect(page.locator("#editor-host")).to_be_visible()
+    page.wait_for_function(
+        "document.querySelector('.CodeMirror').CodeMirror.getValue()"
+        ".includes('- [ ] Render lighting pass')"
+    )
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -163,6 +248,9 @@ def main() -> int:
 
     root = Path(tempfile.mkdtemp(prefix="possess-smoke-"))
     vault = root / "notes"
+    # The shared sample vault (the ep04 / sh040 pipeline and its flow), plus
+    # two notes of the test's own.
+    shutil.copytree(Path(__file__).resolve().parents[2] / "sample-vault", vault)
     (vault / "sub").mkdir(parents=True)
     (vault / "welcome.md").write_text(WELCOME, encoding="utf-8", newline="\n")
     (vault / "sub" / "Other.md").write_text(OTHER, encoding="utf-8", newline="\n")

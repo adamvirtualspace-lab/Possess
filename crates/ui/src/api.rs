@@ -203,3 +203,42 @@ pub async fn set_hooks(enabled: bool) -> Result<SetHooksResponse, String> {
 pub async fn scaffold_scripts() -> Result<ScaffoldResponse, String> {
     post("/api/scripts/scaffold", &serde_json::json!({})).await
 }
+
+// ── Graph ──
+
+pub async fn get_graph(flow: Option<&str>) -> Result<GraphResponse, String> {
+    match flow {
+        Some(flow) => get(&format!("/api/graph?flow={}", encode(flow))).await,
+        None => get("/api/graph").await,
+    }
+}
+
+pub async fn set_task_status(
+    path: &str,
+    line: usize,
+    from: char,
+    to: char,
+) -> Result<TaskStatusResponse, String> {
+    let body = TaskStatusRequest {
+        path: path.to_string(),
+        line,
+        from,
+        to,
+    };
+    post("/api/task-status", &body).await
+}
+
+pub async fn set_flow_position(
+    flow: &str,
+    line: usize,
+    x: i32,
+    y: i32,
+) -> Result<FlowPositionResponse, String> {
+    let body = FlowPositionRequest {
+        flow: flow.to_string(),
+        line,
+        x,
+        y,
+    };
+    post("/api/flow/position", &body).await
+}
