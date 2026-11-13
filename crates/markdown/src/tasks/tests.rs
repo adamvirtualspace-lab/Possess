@@ -581,96 +581,168 @@ fn sample_vault_flow_warnings() {
     assert!(!warnings.contains_key("flows/ep04-sh040"));
 }
 
-// ── Status changes and what they set off (SYNTAX.md section 6) ──
+// ── Chains: what a status change sets off (SYNTAX.md section 6) ──
+
+/// (path, line, from, to) for each change, for compact assertions.
+fn moves(chain: &Chain) -> Vec<(&str, usize, char, char)> {
+    chain
+        .changes
+        .iter()
+        .map(|c| (c.path.as_str(), c.line, c.from, c.to))
+        .collect()
+}
+
+fn line_of(vault: &Vault, path: &str, id: &str) -> usize {
+    vault.file(path).unwrap().task_by_id(id).unwrap().line
+}
+
+fn status_of(vault: &Vault, path: &str, id: &str) -> char {
+    vault.file(path).unwrap().task_by_id(id).unwrap().ch
+}
+
+/// Set a task, found by its ID, as a click in the graph would.
+fn tick(vault: &mut Vault, path: &str, id: &str, to: char) -> Chain {
+    let line = line_of(vault, path, id);
+    let from = status_of(vault, path, id);
+    vault.set_status(path, line, from, to).unwrap()
+}
 
 /// Milestone 4's "done when": ticking Polish pass (anim) and Cache water to
 /// disk (fx) flips Render lighting pass from ⚪ to 🔳, in the file.
 #[test]
 fn ticking_both_needs_unblocks_lighting() {
     let mut vault = sample_vault();
-    let lighting = |v: &Vault| {
-        v.file("lighting/sh040")
-            .unwrap()
-            .task_by_id("l2")
-            .unwrap()
-            .ch
-    };
-    assert_eq!(lighting(&vault), '-');
+    assert_eq!(status_of(&vault, "lighting/sh040", "l2"), '-');
 
-    // Polish pass: anim line 10. Lighting still waits for the water cache.
-    let changes = vault.set_status("anim/sh040", 10, ' ', 'x').unwrap();
-    assert_eq!(changes.len(), 1);
-    assert_eq!(lighting(&vault), '-');
+    // Lighting still waits for the water cache.
+    let chain = tick(&mut vault, "anim/sh040", "a2", 'x');
+    assert_eq!(moves(&chain), [("anim/sh040", 10, ' ', 'x')]);
 
-    // Cache water to disk: fx line 10. Now both needs are done.
-    let changes = vault.set_status("fx/sh040-water", 10, ' ', 'x').unwrap();
+    let chain = tick(&mut vault, "fx/sh040-water", "f2", 'x');
     assert_eq!(
-        changes,
+        moves(&chain),
         [
-            Change {
-                path: "fx/sh040-water".into(),
-                line: 10,
-                from: ' ',
-                to: 'x'
-            },
-            Change {
-                path: "lighting/sh040".into(),
-                line: 8,
-                from: '-',
-                to: ' '
-            },
+            ("fx/sh040-water", 10, ' ', 'x'),
+            ("lighting/sh040", 8, '-', ' ')
         ]
     );
-    assert_eq!(lighting(&vault), ' ');
+    assert_eq!(chain.changes[1].id.as_deref(), Some("l2"));
+    assert_eq!(chain.changes[1].text, "Render lighting pass @maya @unit7");
     assert!(vault
         .source("lighting/sh040")
         .unwrap()
         .contains("- [ ] Render lighting pass @maya @unit7 ^l2"));
-    // Comp also needs f2, but still waits for l2 and f3: no flip.
+    // Comp also needs f2, but still waits for l2 and f3.
+    assert_eq!(status_of(&vault, "comp/sh040", "c1"), '-');
+}
+
+/// Milestone 5's "done when", in the engine: the whole sh040 chain pushed
+/// from rig to delivery, one click at a time.
+#[test]
+fn the_whole_pipeline_from_rig_to_delivery() {
+    let mut vault = sample_vault();
+    tick(&mut vault, "anim/sh040", "a2", 'x');
+    tick(&mut vault, "fx/sh040-water", "f2", 'x');
+    tick(&mut vault, "fx/sh040-water", "f3", 'x');
     assert_eq!(
-        vault
-            .file("comp/sh040")
-            .unwrap()
-            .task_by_id("c1")
-            .unwrap()
-            .ch,
-        '-'
+        status_of(&vault, "comp/sh040", "c1"),
+        '-',
+        "comp still needs lighting"
     );
+
+    let chain = tick(&mut vault, "lighting/sh040", "l2", 'x');
+    assert_eq!(moves(&chain)[1], ("comp/sh040", 16, '-', ' '));
+
+    tick(&mut vault, "comp/sh040", "c1", 'x');
+    tick(&mut vault, "audio/ep04", "au1", 'x');
+    assert_eq!(
+        status_of(&vault, "delivery/ep04", "dl1"),
+        '-',
+        "still needs the sign-off"
+    );
+    let chain = tick(&mut vault, "review/director-notes", "d2", 'x');
+    let dl1 = line_of(&vault, "delivery/ep04", "dl1");
+    assert_eq!(moves(&chain)[1], ("delivery/ep04", dl1, '-', ' '));
+    tick(&mut vault, "delivery/ep04", "dl1", 'x');
+    assert_eq!(status_of(&vault, "delivery/ep04", "dl1"), 'x');
+}
+
+#[test]
+fn sync_marks_the_mirrored_task_done() {
+    let mut vault = sample_vault();
+    // Foot contact fix (anim) is synced into the director's notes.
+    let chain = tick(&mut vault, "anim/sh040", "a3", 'x');
+    assert_eq!(
+        moves(&chain),
+        [
+            ("anim/sh040", 12, '?', 'x'),
+            // Director notes call done [x] "addressed".
+            ("review/director-notes", 7, ' ', 'x'),
+        ]
+    );
+    // Sync only fires on becoming done: undoing it in anim leaves the note.
+    let chain = tick(&mut vault, "anim/sh040", "a3", '?');
+    assert_eq!(chain.changes.len(), 1);
+    assert_eq!(status_of(&vault, "review/director-notes", "d1"), 'x');
+}
+
+#[test]
+fn a_chain_can_run_through_several_files() {
+    // A done, then B synced done, then C (which needs B) unblocked.
+    let mut vault = Vault::new();
+    vault.insert("a.md", "- [ ] A ^a\n");
+    vault.insert("b.md", "- [ ] B ^b\n  - sync:: [[a#^a]]\n");
+    vault.insert("c.md", "- [-] C ^c\n  - needs:: [[b#^b]]\n");
+    let chain = vault.set_status("a", 1, ' ', 'x').unwrap();
+    assert_eq!(
+        moves(&chain),
+        [("a", 1, ' ', 'x'), ("b", 1, ' ', 'x'), ("c", 1, '-', ' ')]
+    );
+    assert!(chain.loops.is_empty());
+}
+
+#[test]
+fn the_loop_guard_changes_each_task_once() {
+    // A done unblocks T (T changed once). A done also syncs B, and T syncs
+    // B, so B becoming done would change T a second time: skipped.
+    let mut vault = Vault::new();
+    vault.insert("a.md", "- [ ] A ^a\n");
+    vault.insert("b.md", "- [ ] B ^b\n  - sync:: [[a#^a]]\n");
+    vault.insert(
+        "t.md",
+        "- [-] T ^t\n  - needs:: [[a#^a]]\n  - sync:: [[b#^b]]\n",
+    );
+    let chain = vault.set_status("a", 1, ' ', 'x').unwrap();
+    assert_eq!(
+        moves(&chain),
+        // Reactions to one change run in file order: B's sync, then T.
+        [("a", 1, ' ', 'x'), ("b", 1, ' ', 'x'), ("t", 1, '-', ' ')]
+    );
+    assert_eq!(chain.loops.len(), 1);
+    assert_eq!(
+        (chain.loops[0].path.as_str(), chain.loops[0].wanted),
+        ("t", 'x')
+    );
+    assert_eq!(status_of(&vault, "t", "t"), ' ');
 }
 
 #[test]
 fn a_retake_blocks_waiting_tasks_again() {
     let mut vault = sample_vault();
-    vault.set_status("anim/sh040", 10, ' ', 'x').unwrap();
-    vault.set_status("fx/sh040-water", 10, ' ', 'x').unwrap();
+    tick(&mut vault, "anim/sh040", "a2", 'x');
+    tick(&mut vault, "fx/sh040-water", "f2", 'x');
 
     // Polish pass goes back to ready to check: lighting is open, so it's
     // blocked again.
-    let changes = vault.set_status("anim/sh040", 10, 'x', '?').unwrap();
-    assert_eq!(
-        changes[1],
-        Change {
-            path: "lighting/sh040".into(),
-            line: 8,
-            from: ' ',
-            to: '-'
-        }
-    );
+    let chain = tick(&mut vault, "anim/sh040", "a2", '?');
+    assert_eq!(moves(&chain)[1], ("lighting/sh040", 8, ' ', '-'));
 
     // Once lighting has moved on, a retake leaves it alone.
-    vault.set_status("anim/sh040", 10, '?', 'x').unwrap();
-    vault.set_status("lighting/sh040", 8, ' ', '?').unwrap();
-    let changes = vault.set_status("anim/sh040", 10, 'x', '?').unwrap();
-    assert_eq!(changes.len(), 1);
-    assert_eq!(
-        vault
-            .file("lighting/sh040")
-            .unwrap()
-            .task_by_id("l2")
-            .unwrap()
-            .ch,
-        '?'
-    );
+    tick(&mut vault, "anim/sh040", "a2", 'x');
+    tick(&mut vault, "lighting/sh040", "l2", '?');
+    let chain = tick(&mut vault, "anim/sh040", "a2", '?');
+    assert_eq!(chain.changes.len(), 1);
+    assert_eq!(status_of(&vault, "lighting/sh040", "l2"), '?');
 }
 
 #[test]
@@ -699,6 +771,109 @@ fn files_without_a_blocked_status_are_never_flipped() {
         "b.md",
         "::statusformat:: [ ] = o = open, [x] = d = done ::statusformat::\n- [ ] Waits\n  - needs:: [[a#^up]]\n",
     );
-    let changes = vault.set_status("a", 1, ' ', 'x').unwrap();
-    assert_eq!(changes.len(), 1);
+    let chain = vault.set_status("a", 1, ' ', 'x').unwrap();
+    assert_eq!(chain.changes.len(), 1);
+}
+
+// ── Undo ──
+
+#[test]
+fn reverting_a_chain_restores_every_byte() {
+    let original = sample_vault();
+    let mut vault = original.clone();
+    tick(&mut vault, "anim/sh040", "a2", 'x');
+    let chain = tick(&mut vault, "fx/sh040-water", "f2", 'x');
+
+    let reverted = vault.revert(&chain.changes).unwrap();
+    // Newest first: the unblock is undone before the tick that caused it.
+    assert_eq!(reverted[0].path, "lighting/sh040");
+    assert_eq!(reverted[0].to, '-');
+    assert_eq!(
+        vault.source("lighting/sh040"),
+        original.source("lighting/sh040")
+    );
+    assert_eq!(
+        vault.source("fx/sh040-water"),
+        original.source("fx/sh040-water")
+    );
+    // The earlier chain (Polish pass) is untouched.
+    assert_eq!(status_of(&vault, "anim/sh040", "a2"), 'x');
+}
+
+#[test]
+fn reverting_refuses_if_a_task_changed_since() {
+    let mut vault = sample_vault();
+    tick(&mut vault, "anim/sh040", "a2", 'x');
+    let chain = tick(&mut vault, "fx/sh040-water", "f2", 'x');
+    // Someone moves lighting on after the chain unblocked it.
+    tick(&mut vault, "lighting/sh040", "l2", '?');
+    let before = vault.clone();
+
+    let err = vault.revert(&chain.changes).unwrap_err();
+    assert_eq!(
+        err,
+        EditError::Stale {
+            line: 8,
+            found: '?'
+        }
+    );
+    // All or nothing: the fx tick wasn't reverted either.
+    assert_eq!(
+        vault.source("fx/sh040-water"),
+        before.source("fx/sh040-water")
+    );
+}
+
+#[test]
+fn a_task_is_found_again_after_lines_move() {
+    let mut vault = sample_vault();
+    let chain = tick(&mut vault, "anim/sh040", "a2", 'x');
+    // An edit elsewhere adds two lines above the task.
+    let shifted = format!(
+        "Two new lines\nat the top\n{}",
+        vault.source("anim/sh040").unwrap()
+    );
+    vault.insert("anim/sh040.md", &shifted);
+    assert_eq!(
+        vault.find_task_line("anim/sh040", 10, Some("a2"), "Polish pass @ika"),
+        Some(12)
+    );
+    vault.revert(&chain.changes).unwrap();
+    assert_eq!(status_of(&vault, "anim/sh040", "a2"), ' ');
+}
+
+// ── Following changes made elsewhere ──
+
+#[test]
+fn previewing_and_following_an_outside_edit() {
+    let mut vault = sample_vault();
+    tick(&mut vault, "anim/sh040", "a2", 'x');
+
+    // Cache water to disk is ticked in another app: the vault has read the
+    // new file, but nothing it sets off has happened.
+    let src = vault
+        .source("fx/sh040-water")
+        .unwrap()
+        .replace("- [ ] Cache water", "- [x] Cache water");
+    vault.insert("fx/sh040-water.md", &src);
+    let outside = Change {
+        path: "fx/sh040-water".into(),
+        line: 10,
+        id: Some("f2".into()),
+        text: "Cache water to disk @teo @unit7".into(),
+        from: ' ',
+        to: 'x',
+    };
+
+    let preview = vault.preview(std::slice::from_ref(&outside));
+    assert_eq!(moves(&preview), [("lighting/sh040", 8, '-', ' ')]);
+    assert_eq!(
+        status_of(&vault, "lighting/sh040", "l2"),
+        '-',
+        "a preview changes nothing"
+    );
+
+    let chain = vault.follow(&[outside]).unwrap();
+    assert_eq!(chain, preview);
+    assert_eq!(status_of(&vault, "lighting/sh040", "l2"), ' ');
 }
