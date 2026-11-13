@@ -39,5 +39,6 @@ anim ─ ─ sync ─ ─► review/director-notes
 | `audio/ep04.md` | None, so it uses the built-in default | |
 | `delivery/ep04.md` | `[x]` renamed to "Delivered" with 📦 | A **Shot status** line that the Find & Replace node edits, and a `## Tasks` heading that Append Line adds lines under |
 | `review/sh040-reply.md` | None | No tasks. The Text Check node reads it. |
+| `flows/ep04-sh040.md` | None | A flow: its `::flow::` block makes the nine pipeline notes into graph nodes, with their positions. |
 
-The operator nodes from the full-app mockup (`docs/mockups/obsessed-app.html`) aren't saved in this vault yet. Their file format (`.obsessed/flows/`) gets decided in milestone 6.
+The operator nodes from the full-app mockup (`docs/mockups/obsessed-app.html`) aren't saved in this vault yet. They will live in the flow's `::flow::` block, with a syntax decided in milestone 6.

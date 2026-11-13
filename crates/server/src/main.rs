@@ -2,6 +2,7 @@
 
 mod assets;
 mod error;
+mod graph;
 mod notes;
 mod scripts;
 mod search;
@@ -183,6 +184,9 @@ async fn main() {
         .route("/api/delete", post(notes::delete_entry))
         .route("/api/restore", post(notes::restore_entry))
         .route("/api/status", get(notes::get_status))
+        .route("/api/graph", get(graph::get_graph))
+        .route("/api/task-status", post(graph::set_task_status))
+        .route("/api/flow/position", post(graph::set_flow_position))
         .route("/api/search", get(search::search))
         .route("/api/scripts", get(scripts::list_scripts))
         .route("/api/scripts/run", post(scripts::run_script))

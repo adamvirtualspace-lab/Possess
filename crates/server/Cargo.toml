@@ -12,6 +12,7 @@ tower-http = { version = "0.6", features = ["fs", "cors", "set-header"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 possess-common = { workspace = true }
+possess-markdown = { workspace = true }
 walkdir = "2"
 mime_guess = "2"
 base64 = "0.22"

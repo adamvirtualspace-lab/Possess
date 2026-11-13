@@ -4,7 +4,9 @@ This file is the contract. The parser, the node graph, the web server and anyone
 
 Everything here is plain markdown. A vault written for Obsessed still opens in Obsidian, VS Code or GitHub; those tools just don't run the wires.
 
-> v0.2, 2026-10-15. Everything in this file is agreed. New ideas go under [Ideas for later](#ideas-for-later-not-in-v02) until they are.
+> v0.3, 2026-11-13. Everything in this file is agreed. New ideas go under [Ideas for later](#ideas-for-later-not-in-v03) until they are.
+>
+> v0.3 changes section 7: a flow is now a note with a `::flow::` block, not a JSON file in `.obsessed/flows/`.
 
 ## 1. Tasks
 
@@ -69,7 +71,7 @@ Where it goes and how many:
 
 - Put it anywhere in the file: at the top, after the title, or at the bottom.
 - One format applies to the **whole file**. If a file has more than one, **the last one wins**. The parser reads top to bottom and each new one replaces the one before. The app warns about any it ignored.
-- If a file has no format, it uses the built-in default, which is the example at the top of this section. Later, a vault-wide default can live in `.obsessed/` (section 7).
+- If a file has no format, it uses the built-in default, which is the example at the top of this section. Later, a vault-wide default can live in `.obsessed/` (section 8).
 
 ### Roles
 
@@ -164,16 +166,43 @@ A wire is written on the task that **receives** it (the downstream task), the sa
 - **Log and undo:** every change a wire or operator node makes is logged with the file, line, old value and new value. A whole chain reaction undoes as one step, newest chain first.
 - **Outside edits:** when a file changes outside the app (Obsidian, VS Code, `git pull`), the app re-reads it. Status changes in it fire wires like any other change, so people using other tools don't break the pipeline. They show in the log as outside edits and can't be undone from the app.
 
-## 7. The `.obsessed/` folder
+## 7. Flows
 
-This folder sits at the vault root and holds everything that isn't a task:
+A flow is a saved graph: which notes appear in it as nodes, and where each one sits. A flow is an ordinary note with a `::flow::` block, so it opens in Obsidian, its links are clickable there, and git shows what changed.
 
-- `flows/<name>.json`: one file per flow (a saved graph). It lists which files appear in the flow, where each node sits, the operator nodes (Text Check, Find & Replace, Set Status, ...) and the exec wires between them.
-- vault settings, like a vault-wide default status format
+```md
+# ep04 – sh040
 
-The files are JSON, and the exact format gets decided in milestone 6. You never need to edit them by hand.
+The sh040 pipeline, rig to delivery.
 
-## 8. How it looks in other tools
+::flow::
+- [[rig/hero]] @ 0, 120
+- [[anim/sh040]] @ 320, 40
+- [[fx/sh040-water]]
+::flow::
+```
+
+- The block opens and closes with a line that is exactly `::flow::`. Both markers must start a line.
+- Each node is a list item holding one link to a note: `- [[path]]`. The path starts at the vault root and leaves out `.md`, like task links. It points at a note, not at a task, so it has no `#^id`.
+- `@ x, y` after the link is the node's position on the canvas, in whole pixels (negative is fine). It's optional: a node without one is placed automatically, and the app writes its position the first time you move it. Moving a node changes only the numbers on its own line.
+- Any note can be a node, with or without tasks. Wires are drawn only between nodes in the same flow.
+- The rest of the note is ordinary markdown: a description, tasks of its own, anything.
+- Other lines inside the block are ignored. Operator nodes (Text Check, Find & Replace, Set Status, ...) and their exec wires will also live in this block. Their syntax gets decided in milestone 6.
+
+Mistakes:
+
+- A link to a note that doesn't exist: the node shows as missing, with a warning.
+- The same note listed twice: the first line is used, and the app warns.
+- A `@` position that isn't two whole numbers: the node is placed automatically, with a warning. The line is left alone until the node is moved.
+- More than one `::flow::` block: the last one wins, like status formats, and the app warns about the others.
+- A `::flow::` block that is never closed is ignored, with a warning.
+- A `::flow::` block inside a code fence is ignored.
+
+## 8. The `.obsessed/` folder
+
+This folder sits at the vault root and holds settings that aren't notes, like a vault-wide default status format. Its format gets decided when the first setting needs it.
+
+## 9. How it looks in other tools
 
 | Syntax | Obsidian | GitHub |
 |---|---|---|
@@ -183,8 +212,9 @@ The files are JSON, and the exact format gets decided in milestone 6. You never 
 | `- needs:: ...` | A small bullet under the task. The Dataview plugin reads it as a field. | A nested bullet |
 | `[[file#^id]]` | Link that jumps to the task | Plain text |
 | `^id` | Hidden in reading view | Plain text |
+| `::flow::` block | Plain text, with clickable links to each node | Plain text |
 
-## 9. Full example
+## 10. Full example
 
 `lighting/sh040.md`:
 
@@ -204,7 +234,7 @@ Late-afternoon sun, warm key from camera left.
 
 When both linked tasks become done, `^l2` flips from ⚪ to 🔳 and the file now reads `- [ ] Render lighting pass ...`.
 
-## Ideas for later (not in v0.2)
+## Ideas for later (not in v0.3)
 
 - Sections with their own status format, where a format applies from where it appears downward.
 - Hiding the format block in Obsidian with an Obsidian comment (`%% ... %%`).

@@ -5,6 +5,7 @@
 //! marker and one space; numbered lists don't count) and the editor needs the
 //! exact bytes of each status character.
 
+use super::flow::{self, Flow};
 use super::format::StatusFormat;
 use super::{Warning, WarningCode};
 
@@ -45,6 +46,8 @@ pub struct Task {
 pub struct ParsedFile {
     pub format: StatusFormat,
     pub tasks: Vec<Task>,
+    /// The note's `::flow::` block, if it is a flow.
+    pub flow: Option<Flow>,
     pub warnings: Vec<Warning>,
 }
 
@@ -235,10 +238,12 @@ pub fn parse(src: &str) -> ParsedFile {
     let lines = lines(src);
     let mut warnings = Vec::new();
 
-    // Pass 1: fences and status format blocks. Lines inside either are
-    // never tasks.
+    // Pass 1: fences, status format blocks and flow blocks. Lines inside any
+    // of them are never tasks.
     let mut skip = vec![false; lines.len()];
     let mut blocks: Vec<Vec<(usize, &str)>> = Vec::new();
+    // `::flow::` blocks as (opening, closing) line indexes.
+    let mut flows: Vec<(usize, usize)> = Vec::new();
     let mut open_fence: Option<(char, usize)> = None;
     let mut i = 0;
     while i < lines.len() {
@@ -257,6 +262,24 @@ pub fn parse(src: &str) -> ParsedFile {
             open_fence = Some(found);
             skip[i] = true;
             i += 1;
+            continue;
+        }
+        if flow::is_marker(text) {
+            match (i + 1..lines.len()).find(|&j| flow::is_marker(lines[j].text)) {
+                Some(j) => {
+                    skip[i..=j].iter_mut().for_each(|s| *s = true);
+                    flows.push((i, j));
+                    i = j + 1;
+                }
+                None => {
+                    warnings.push(Warning::new(
+                        lines[i].number,
+                        WarningCode::FlowUnclosed,
+                        "This flow is never closed with ::flow::, so it's ignored.".to_string(),
+                    ));
+                    i += 1;
+                }
+            }
             continue;
         }
         if let Some(after) = text.strip_prefix(MARKER) {
@@ -310,6 +333,23 @@ pub fn parse(src: &str) -> ParsedFile {
         }
         format = StatusFormat::from_entries(last, &mut warnings);
     }
+
+    // Flows work the same way: the last block wins.
+    let flow = flows.split_last().map(|(&(open, close), earlier)| {
+        let winner = lines[open].number;
+        for &(earlier_open, _) in earlier {
+            warnings.push(Warning::new(
+                lines[earlier_open].number,
+                WarningCode::FlowIgnored,
+                format!("Ignored: the flow on line {winner} comes later, so it wins."),
+            ));
+        }
+        let inside: Vec<(usize, usize, &str)> = lines[open + 1..close]
+            .iter()
+            .map(|l| (l.number, l.start, l.text))
+            .collect();
+        flow::parse_block(winner, &inside, &mut warnings)
+    });
 
     // Pass 2: tasks and the wire lines under them.
     let mut tasks: Vec<Task> = Vec::new();
@@ -383,6 +423,7 @@ pub fn parse(src: &str) -> ParsedFile {
     ParsedFile {
         format,
         tasks,
+        flow,
         warnings,
     }
 }

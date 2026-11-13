@@ -1296,6 +1296,7 @@ dependencies = [
  "fs_extra",
  "mime_guess",
  "possess-common",
+ "possess-markdown",
  "regex",
  "rust-embed",
  "serde",
