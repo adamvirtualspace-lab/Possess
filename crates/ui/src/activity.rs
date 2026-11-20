@@ -20,14 +20,36 @@ pub fn listen(state: AppState) {
         leptos::logging::error!("Could not listen for changes: no EventSource");
         return;
     };
+    // A burst of events (a `git pull` touching many notes) becomes one
+    // redraw: the first event starts a short timer, later ones ride on it.
+    let waiting = std::rc::Rc::new(std::cell::Cell::new(false));
+    let bump = {
+        let waiting = waiting.clone();
+        Closure::<dyn FnMut()>::new(move || {
+            waiting.set(false);
+            state.revision.update(|r| *r += 1);
+        })
+    };
     let on_message = Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |_| {
-        state.revision.update(|r| *r += 1);
+        if waiting.replace(true) {
+            return;
+        }
+        if let Some(window) = web_sys::window() {
+            let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
+                bump.as_ref().unchecked_ref(),
+                REDRAW_DELAY_MS,
+            );
+        }
     });
     source.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
     // Both live for the whole page.
     on_message.forget();
     std::mem::forget(source);
 }
+
+/// How long the page waits after a change event before redrawing, so a
+/// burst of them costs one fetch.
+const REDRAW_DELAY_MS: i32 = 120;
 
 fn source_label(source: &str) -> &'static str {
     match source {

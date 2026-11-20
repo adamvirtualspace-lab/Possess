@@ -6,7 +6,6 @@
 //! made in Obsidian or the editor is always seen.
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
 
 use axum::extract::{Query, State};
 use axum::Json;
@@ -21,16 +20,18 @@ use serde::Deserialize;
 
 use crate::activity::edit_error;
 use crate::error::{AppError, AppResult};
-use crate::notes::{mtime_secs, walk_notes};
+use crate::notes::mtime_secs;
 use crate::vault::AppState;
 
 /// Distance between automatic layout columns, in canvas pixels.
 const COLUMN: i32 = 340;
 
-/// Read every note in the vault.
-pub fn load_vault(base: &Path) -> std::io::Result<Vault> {
+/// Read every note in the vault. (The server keeps one parsed copy in its
+/// engine; this is for tests.)
+#[cfg(test)]
+pub fn load_vault(base: &std::path::Path) -> std::io::Result<Vault> {
     let mut vault = Vault::new();
-    for entry in walk_notes(base) {
+    for entry in crate::notes::walk_notes(base) {
         let Ok(rel) = entry.path().strip_prefix(base) else {
             continue;
         };
@@ -344,9 +345,10 @@ pub async fn get_graph(
     State(state): State<AppState>,
     Query(params): Query<GraphQuery>,
 ) -> AppResult<Json<GraphResponse>> {
-    let vault = load_vault(&state.vault_resolved())?;
     let flow = params.flow.as_deref().filter(|f| !f.is_empty());
-    Ok(Json(build(&vault, flow)?))
+    // From the engine's parsed copy: no re-reading the vault per request.
+    let engine = state.engine().await;
+    Ok(Json(build(engine.notes(), flow)?))
 }
 
 pub async fn set_flow_position(
@@ -370,6 +372,8 @@ pub async fn set_flow_position(
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     /// A throwaway copy of the sample vault.
